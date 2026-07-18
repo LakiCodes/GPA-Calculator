@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
   Calculator,
   CheckCircle2,
   Download,
-  FileJson,
   GraduationCap,
   LineChart,
   Plus,
@@ -14,7 +13,6 @@ import {
   Settings,
   Target,
   Trash2,
-  Upload,
   XCircle,
   type LucideIcon
 } from "lucide-react";
@@ -33,9 +31,9 @@ import {
   sumCredits
 } from "./calculations/curriculum";
 import { evaluateGraduation } from "./calculations/graduation";
-import { calculateCourseGpa, isCompletedResult } from "./calculations/gpa";
+import { calculateCourseGpa, isCompletedResult, resultPointHundredths } from "./calculations/gpa";
 import { calculatePlannerProjection, defaultScenario } from "./calculations/planner";
-import { effectiveCourseResult, effectiveResultMap, createCourseRecord } from "./calculations/records";
+import { effectiveResultMap, createCourseRecord } from "./calculations/records";
 import { resolveAttempts } from "./calculations/attempts";
 import { GRADE_POINTS_HUNDREDTHS, MARK_BANDS, RESULT_CODES, gradeFromMark, isLetterGrade } from "./data/gradeScale";
 import { programmes, programmeById } from "./data/programmes";
@@ -48,6 +46,7 @@ import type {
   ElectiveGroup,
   GradeEntry,
   PlannerScenario,
+  Programme,
   StudentData,
   YearLevel
 } from "./domain/types";
@@ -56,10 +55,8 @@ import {
   downloadText,
   loadStudentData,
   loadStorageNoticeAccepted,
-  parseImportedStudentData,
   saveStudentData,
-  saveStorageNoticeAccepted,
-  toExportJson
+  saveStorageNoticeAccepted
 } from "./storage/localStore";
 import usjpLogo from "./assets/usjp-logo.jpeg";
 
@@ -154,46 +151,271 @@ const initialData = (): StudentData => {
 
 const formatGpa = (value: string | null): string => value ?? "--";
 
-const csvEscape = (value: string | number | undefined): string => {
+const csvEscape = (value: string | number | null | undefined): string => {
   const text = String(value ?? "");
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
 const courseLabel = (course?: Course): string =>
   course ? `${course.code} ${course.title}` : "Unknown course";
 
-const makeCsv = (
-  courses: Course[],
-  records: Record<string, CourseRecord>
-): string => {
-  const header = [
+const courseAlertDetails = (result: GradeEntry): { label: string; detail: string } => {
+  switch (result) {
+    case "MC":
+      return {
+        label: "Pending result: MC",
+        detail: "Approved medical absence. This course is excluded from GPA until a final result is entered."
+      };
+    case "DFR":
+      return {
+        label: "Pending result: DFR",
+        detail: "Deferred result. This course is excluded from GPA until a final result is entered."
+      };
+    case "INC":
+      return {
+        label: "Pending result: INC",
+        detail: "Incomplete result. This course is excluded from GPA until a final result is entered."
+      };
+    case "AB":
+      return {
+        label: "Mandatory repeat: AB",
+        detail: "Absent is treated as 0.00 GPA points and must be repeated."
+      };
+    case "D":
+    case "E":
+      return {
+        label: `Mandatory repeat: ${result}`,
+        detail: "This grade is below the pass threshold for completion and must be repeated."
+      };
+    case "F":
+      return {
+        label: "Fail alert: F",
+        detail: "Fail is not counted as completed and needs academic attention."
+      };
+    case "":
+      return {
+        label: "Missing result",
+        detail: "No result has been entered for this selected course yet."
+      };
+    default:
+      return {
+        label: `Unresolved result: ${result}`,
+        detail: "This course is not currently treated as fully resolved for graduation checks."
+      };
+  }
+};
+
+const uniqueCourseIds = (...groups: string[][]): string[] => [...new Set(groups.flat())];
+
+interface ReportData {
+  data: StudentData;
+  programme: Programme;
+  activeSelection: CurriculumSelection;
+  courses: Course[];
+  records: Record<string, CourseRecord>;
+  effectiveResults: Record<string, GradeEntry>;
+  overallGpa: ReturnType<typeof calculateCourseGpa>;
+  completedCredits: number;
+  prescribedCredits: number;
+  graduation: ReturnType<typeof evaluateGraduation>;
+  classification: ReturnType<typeof evaluateClassification>;
+  selectionIssues: ReturnType<typeof getSelectionIssues>;
+  scenario: PlannerScenario;
+  projection: ReturnType<typeof calculatePlannerProjection>;
+}
+
+const pathwayLabel = (programme: Programme, selection: CurriculumSelection): string =>
+  programme.pathways.find((pathway) => pathway.id === selection.pathwayId)?.title ??
+  programme.pathways.find((pathway) => pathway.id === selection.pathwayId)?.shortTitle ??
+  "None";
+
+const resultLabel = (result: GradeEntry | undefined): string => result || "Missing";
+
+const completionStatus = (result: GradeEntry): string =>
+  isCompletedResult(result) ? "Completed" : courseAlertDetails(result).label;
+
+const gpaPointLabel = (result: GradeEntry): string => {
+  const points = resultPointHundredths(result);
+  return points === null ? "" : (points / 100).toFixed(2);
+};
+
+const makeCsv = (report: ReportData): string => {
+  const rows: Array<Array<string | number | null | undefined>> = [];
+  const add = (...values: Array<string | number | null | undefined>) => rows.push(values);
+  const blank = () => rows.push([]);
+  const selectedPlan = report.projection.possiblePlans[0];
+  const selectedPlanGrades = selectedPlan?.grades ?? report.projection.recommendedGrades;
+  const alertIds = uniqueCourseIds(
+    report.graduation.mandatoryRepeatCourseIds,
+    report.graduation.pendingCourseIds,
+    report.graduation.failCourseIds
+  );
+
+  add("FMSC GPA Calculator & Planner Export");
+  add("Generated", new Date().toLocaleString());
+  add("Saved data updated", report.data.updatedAt);
+  blank();
+
+  add("Summary");
+  add("Programme", report.programme.programmeName);
+  add("Pathway / option", pathwayLabel(report.programme, report.activeSelection));
+  add("Current GPA", report.overallGpa.gpa);
+  add("GPA detail", report.overallGpa.message);
+  add("Graded credits", report.overallGpa.gradedCredits);
+  add("Completed credits", report.completedCredits);
+  add("Prescribed credits", report.prescribedCredits);
+  add("Graduation dashboard status", report.graduation.canGraduateProvisionally ? "Ready" : "Not Ready");
+  add("Current class standing", report.classification.awardedClass);
+  add("Class evaluated credits", report.classification.evaluatedCredits);
+  add("Academic alerts", alertIds.length);
+  add("Unresolved courses", report.graduation.unresolvedCourseIds.length);
+  blank();
+
+  add("Current GPA Planner Scenario");
+  add("Scenario", report.scenario.name);
+  add("Target GPA", report.scenario.targetGpa.toFixed(2));
+  add("Current GPA in planner", report.projection.currentGpa.gpa);
+  add("Suggested final GPA", report.projection.recommendedGpa);
+  add("Possible GPA range", `${formatGpa(report.projection.minPossibleGpa)} - ${formatGpa(report.projection.maxPossibleGpa)}`);
+  add("Remaining GPA credits", report.projection.remainingGpaCredits);
+  add("Required average", report.projection.requiredAverageLabel);
+  add("Planner note", report.projection.recommendationSummary);
+  blank();
+
+  add("Future Grade Plans");
+  add("Plan", "Final GPA", "Description");
+  report.projection.possiblePlans.forEach((plan) => {
+    add(plan.name, plan.gpa, plan.description);
+  });
+  blank();
+
+  add("Suggested Future Course Grades");
+  add("Year", "Semester", "Code", "Title", "Credits", "Suggested grade");
+  report.courses
+    .filter((course) => report.projection.remainingCourseIds.includes(course.id))
+    .forEach((course) => {
+      add(course.year, course.semester, course.code, course.title, course.credits, selectedPlanGrades[course.id] ?? "");
+    });
+  blank();
+
+  add("All Course Results");
+  add(
     "Year",
     "Semester",
     "Code",
     "Title",
     "Credits",
+    "Course type",
     "Entered result",
     "Effective result",
+    "GPA points",
+    "Completion status",
+    "Alert detail",
     "Source page",
     "Source table",
-    "Notes"
-  ];
-  const rows = courses.map((course) => {
-    const record = records[course.id];
-    return [
+    "Course notes",
+    "Student notes"
+  );
+  report.courses.forEach((course) => {
+    const record = report.records[course.id];
+    const effectiveResult = report.effectiveResults[course.id] ?? "";
+    const alert = isCompletedResult(effectiveResult) ? "" : courseAlertDetails(effectiveResult).detail;
+    add(
       course.year,
       course.semester,
       course.code,
       course.title,
       course.credits,
-      record?.result ?? "",
-      effectiveCourseResult(record),
+      course.status,
+      resultLabel(record?.result),
+      resultLabel(effectiveResult),
+      gpaPointLabel(effectiveResult),
+      completionStatus(effectiveResult),
+      alert,
       course.sourcePage,
       course.sourceTable,
-      course.notes?.join(" | ") ?? ""
-    ].map(csvEscape);
+      course.notes?.join(" | ") ?? "",
+      record?.notes ?? ""
+    );
   });
-  return [header.map(csvEscape), ...rows].map((row) => row.join(",")).join("\n");
+  blank();
+
+  add("Attempt History");
+  add(
+    "Year",
+    "Semester",
+    "Code",
+    "Title",
+    "Attempt number",
+    "Attempt type",
+    "Result",
+    "Approved privileges",
+    "Academic year",
+    "Grade used in GPA",
+    "Notes"
+  );
+  report.courses.forEach((course) => {
+    const attempts = report.records[course.id]?.attempts ?? [];
+    attempts.forEach((attempt) => {
+      add(
+        course.year,
+        course.semester,
+        course.code,
+        course.title,
+        attempt.attemptNumber,
+        attempt.attemptType,
+        resultLabel(attempt.result),
+        attempt.approvedPrivileges ? "Yes" : "No",
+        attempt.academicYear ?? "",
+        attempt.gradeUsedInGpa ?? "",
+        attempt.notes ?? ""
+      );
+    });
+  });
+  blank();
+
+  add("Annual Progress");
+  add("Year", "GPA", "Completed credits", "Total credits", "Status");
+  report.graduation.yearProgress.forEach((year) => {
+    add(year.year, year.gpa.gpa, year.completedCredits, year.totalCredits, year.status);
+  });
+  blank();
+
+  add("Graduation Checklist");
+  add("Item", "Status", "Detail");
+  report.graduation.checklist.forEach((item) => {
+    add(item.label, item.status, item.detail);
+  });
+  blank();
+
+  add("Current Class Standing");
+  add("Class", "Eligible", "High-grade credits", "Evaluated credits", "Poor pass courses", "Reasons");
+  report.classification.results.forEach((result) => {
+    add(
+      result.className,
+      result.eligible ? "Yes" : "No",
+      result.highGradeCredits,
+      result.evaluatedCredits,
+      result.poorGradeCourseCount,
+      result.reasons.join(" | ")
+    );
+  });
+  blank();
+
+  add("Academic Alerts");
+  add("Code", "Title", "Alert", "Detail");
+  alertIds.forEach((id) => {
+    const course = report.courses.find((item) => item.id === id);
+    const alert = courseAlertDetails(report.effectiveResults[id] ?? "");
+    add(course?.code ?? id, course?.title ?? "Unknown course", alert.label, alert.detail);
+  });
+  blank();
+
+  add("Selection Status");
+  add("Status", report.selectionIssues.length === 0 ? "Complete" : "Needs attention");
+  report.selectionIssues.forEach((issue) => add("Issue", issue.message));
+
+  return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
 };
 
 const StatusIcon = ({ status }: { status: "met" | "not-met" | "provisional" | "unknown" }) => {
@@ -301,6 +523,22 @@ function App() {
   const completedCredits = selectedCourses
     .filter((course) => isCompletedResult(effectiveResults[course.id] ?? ""))
     .reduce((sum, course) => sum + course.credits, 0);
+  const reportData: ReportData = {
+    data,
+    programme,
+    activeSelection,
+    courses: selectedCourses,
+    records: data.courseRecords,
+    effectiveResults,
+    overallGpa,
+    completedCredits,
+    prescribedCredits,
+    graduation,
+    classification,
+    selectionIssues,
+    scenario: activeScenario,
+    projection
+  };
 
   useEffect(() => {
     saveStudentData(data);
@@ -400,21 +638,6 @@ function App() {
     });
   };
 
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    try {
-      const imported = parseImportedStudentData(await file.text());
-      setData(imported);
-    } catch (error) {
-      window.alert(`Import failed: ${error instanceof Error ? error.message : "invalid file"}`);
-    } finally {
-      event.target.value = "";
-    }
-  };
-
   const addScenario = (): void => {
     const scenario = {
       ...defaultScenario(3.3),
@@ -505,6 +728,7 @@ function App() {
               classification={classification}
               selectionIssues={selectionIssues}
               courseMap={courseMap}
+              effectiveResults={effectiveResults}
             />
           )}
 
@@ -547,6 +771,7 @@ function App() {
               graduation={graduation}
               classification={classification}
               courseMap={courseMap}
+              effectiveResults={effectiveResults}
             />
           )}
 
@@ -555,14 +780,11 @@ function App() {
           {activeTab === "data" && (
             <DataView
               data={data}
-              programme={programme}
               courses={selectedCourses}
               records={data.courseRecords}
               onUpdateData={updateData}
-              onImport={handleImport}
-              onExportJson={() => downloadText("fmsc-gpa-data.json", toExportJson(data))}
               onExportCsv={() =>
-                downloadText("fmsc-gpa-results.csv", makeCsv(selectedCourses, data.courseRecords), "text/csv")
+                downloadText("fmsc-gpa-summary.csv", makeCsv(reportData), "text/csv;charset=utf-8")
               }
               onPrint={() => window.print()}
               onReset={resetAll}
@@ -570,6 +792,7 @@ function App() {
           )}
         </main>
       </section>
+      <PrintReport report={reportData} />
       {!storageNoticeAccepted && (
         <div className="storage-banner" role="status">
           <div>
@@ -720,7 +943,8 @@ const Dashboard = ({
   graduation,
   classification,
   selectionIssues,
-  courseMap
+  courseMap,
+  effectiveResults
 }: {
   programme: (typeof programmes)[number];
   selectedCourses: Course[];
@@ -731,106 +955,122 @@ const Dashboard = ({
   classification: ReturnType<typeof evaluateClassification>;
   selectionIssues: ReturnType<typeof getSelectionIssues>;
   courseMap: Map<string, Course>;
-}) => (
-  <div className="view-stack">
-    <section className="metric-grid">
-      <div className="metric">
-        <span>Overall GPA</span>
-        <strong>{formatGpa(overallGpa)}</strong>
-        <small>{graduation.overallGpa.message}</small>
-      </div>
-      <div className="metric">
-        <span>Credits</span>
-        <strong>{completedCredits}/{prescribedCredits}</strong>
-        <small>{selectedCourses.length} selected courses</small>
-      </div>
-      <div className="metric">
-        <span>Graduation</span>
-        <strong>{graduation.canGraduateProvisionally ? "Ready" : "Not Ready"}</strong>
-        <small>{graduation.disclaimer}</small>
-      </div>
-      <div className="metric">
-        <span>Current Standing</span>
-        <strong>{classification.awardedClass}</strong>
-        <small>Based on {classification.evaluatedCredits} currently graded credits</small>
-      </div>
-    </section>
+  effectiveResults: Record<string, GradeEntry>;
+}) => {
+  const alertIds = uniqueCourseIds(
+    graduation.mandatoryRepeatCourseIds,
+    graduation.pendingCourseIds,
+    graduation.failCourseIds
+  );
 
-    <section className="panel wide">
-      <div className="panel-heading">
-        <span>{programme.programmeName}</span>
-        <span className="small">Prospectus total {formatExpected(programme.expectedTotals.programmeCredits)} credits</span>
-      </div>
-      <div className="year-grid">
-        {graduation.yearProgress.map((year) => {
-          const ratio = year.totalCredits === 0 ? 0 : Math.round((year.completedCredits / year.totalCredits) * 100);
-          return (
-            <div className="year-strip" key={year.year}>
-              <div>
-                <strong>Year {year.year}</strong>
-                <span>{year.status}</span>
-              </div>
-              <div className="bar" aria-label={`Year ${year.year} completed credits`}>
-                <span style={{ width: `${ratio}%` }} />
-              </div>
-              <small>{year.completedCredits}/{year.totalCredits} credits - GPA {formatGpa(year.gpa.gpa)}</small>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+  return (
+    <div className="view-stack">
+      <section className="metric-grid">
+        <div className="metric">
+          <span>Overall GPA</span>
+          <strong>{formatGpa(overallGpa)}</strong>
+          <small>{graduation.overallGpa.message}</small>
+        </div>
+        <div className="metric">
+          <span>Credits</span>
+          <strong>{completedCredits}/{prescribedCredits}</strong>
+          <small>{selectedCourses.length} selected courses</small>
+        </div>
+        <div className="metric">
+          <span>Graduation</span>
+          <strong>{graduation.canGraduateProvisionally ? "Ready" : "Not Ready"}</strong>
+          <small>{graduation.disclaimer}</small>
+        </div>
+        <div className="metric">
+          <span>Current Standing</span>
+          <strong>{classification.awardedClass}</strong>
+          <small>Based on {classification.evaluatedCredits} currently graded credits</small>
+        </div>
+      </section>
 
-    <section className="two-column">
-      <div className="panel">
+      <section className="panel wide">
         <div className="panel-heading">
-          <span>Academic alerts</span>
-          <span className="small">{graduation.unresolvedCourseIds.length} unresolved</span>
+          <span>{programme.programmeName}</span>
+          <span className="small">Prospectus total {formatExpected(programme.expectedTotals.programmeCredits)} credits</span>
         </div>
-        <AlertCourseList
-          ids={[
-            ...new Set([
-              ...graduation.mandatoryRepeatCourseIds,
-              ...graduation.pendingCourseIds,
-              ...graduation.failCourseIds
-            ])
-          ]}
-          courseMap={courseMap}
-        />
-      </div>
-      <div className="panel">
-        <div className="panel-heading">
-          <span>Selection status</span>
-          <span className="small">{selectionIssues.length === 0 ? "complete" : "needs attention"}</span>
+        <div className="year-grid">
+          {graduation.yearProgress.map((year) => {
+            const ratio = year.totalCredits === 0 ? 0 : Math.round((year.completedCredits / year.totalCredits) * 100);
+            return (
+              <div className="year-strip" key={year.year}>
+                <div>
+                  <strong>Year {year.year}</strong>
+                  <span>{year.status}</span>
+                </div>
+                <div className="bar" aria-label={`Year ${year.year} completed credits`}>
+                  <span style={{ width: `${ratio}%` }} />
+                </div>
+                <small>{year.completedCredits}/{year.totalCredits} credits - GPA {formatGpa(year.gpa.gpa)}</small>
+              </div>
+            );
+          })}
         </div>
-        {selectionIssues.length === 0 ? (
-          <p className="empty-state">Pathway and elective selections satisfy the encoded Prospectus rules.</p>
-        ) : (
-          <ul className="plain-list">
-            {selectionIssues.map((issue) => (
-              <li key={issue.message}>{issue.message}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  </div>
-);
+      </section>
+
+      <section className="two-column">
+        <div className="panel">
+          <div className="panel-heading">
+            <span>Academic alerts</span>
+            <span className="small">
+              {alertIds.length} {alertIds.length === 1 ? "alert" : "alerts"}
+            </span>
+          </div>
+          <AlertCourseList
+            ids={alertIds}
+            courseMap={courseMap}
+            effectiveResults={effectiveResults}
+          />
+        </div>
+        <div className="panel">
+          <div className="panel-heading">
+            <span>Selection status</span>
+            <span className="small">{selectionIssues.length === 0 ? "complete" : "needs attention"}</span>
+          </div>
+          {selectionIssues.length === 0 ? (
+            <p className="empty-state">Pathway and elective selections satisfy the encoded Prospectus rules.</p>
+          ) : (
+            <ul className="plain-list">
+              {selectionIssues.map((issue) => (
+                <li key={issue.message}>{issue.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
 
 const AlertCourseList = ({
   ids,
-  courseMap
+  courseMap,
+  effectiveResults
 }: {
   ids: string[];
   courseMap: Map<string, Course>;
+  effectiveResults: Record<string, GradeEntry>;
 }) => {
   if (ids.length === 0) {
     return <p className="empty-state">No repeat, pending, or failed courses in the active selection.</p>;
   }
   return (
     <ul className="course-alert-list">
-      {ids.slice(0, 8).map((id) => (
-        <li key={id}>{courseLabel(courseMap.get(id))}</li>
-      ))}
+      {ids.slice(0, 8).map((id) => {
+        const result = effectiveResults[id] ?? "";
+        const alert = courseAlertDetails(result);
+        return (
+          <li key={id}>
+            <span>{courseLabel(courseMap.get(id))}</span>
+            <strong>{alert.label}</strong>
+            <small>{alert.detail}</small>
+          </li>
+        );
+      })}
       {ids.length > 8 && <li>{ids.length - 8} more courses</li>}
     </ul>
   );
@@ -1109,7 +1349,12 @@ const PlannerView = ({
   onAddScenario: () => void;
   onDeleteScenario: (scenarioId: string) => void;
 }) => {
-  const targetPresets = [2, 3, 3.3, 3.7];
+  const targetPresets = [
+    { label: "Pass", value: 2 },
+    { label: "Second Lower", value: 3 },
+    { label: "Second Upper", value: 3.3 },
+    { label: "First Class", value: 3.7 }
+  ];
   const effectiveResults = effectiveResultMap(courses, records);
   const remainingCourses = courses.filter((course) => projection.remainingCourseIds.includes(course.id));
   const plans = projection.possiblePlans;
@@ -1185,11 +1430,13 @@ const PlannerView = ({
           {targetPresets.map((target) => (
             <button
               type="button"
-              key={target}
-              className={clsx(scenario.targetGpa === target && "active")}
-              onClick={() => onScenarioChange(scenario.id, (current) => ({ ...current, targetGpa: target }))}
+              key={target.label}
+              className={clsx(scenario.targetGpa === target.value && "active")}
+              onClick={() => onScenarioChange(scenario.id, (current) => ({ ...current, targetGpa: target.value }))}
+              title={`${target.value.toFixed(2)} target GPA`}
             >
-              {target.toFixed(2)}
+              <span>{target.label}</span>
+              <small>{target.value.toFixed(2)}</small>
             </button>
           ))}
           <input
@@ -1268,11 +1515,13 @@ const PlannerView = ({
 const ProgressView = ({
   graduation,
   classification,
-  courseMap
+  courseMap,
+  effectiveResults
 }: {
   graduation: ReturnType<typeof evaluateGraduation>;
   classification: ReturnType<typeof evaluateClassification>;
   courseMap: Map<string, Course>;
+  effectiveResults: Record<string, GradeEntry>;
 }) => (
   <div className="view-stack">
     <section className="panel">
@@ -1361,7 +1610,11 @@ const ProgressView = ({
         <span>Unresolved courses</span>
         <span className="small">{graduation.unresolvedCourseIds.length}</span>
       </div>
-      <AlertCourseList ids={graduation.unresolvedCourseIds} courseMap={courseMap} />
+      <AlertCourseList
+        ids={graduation.unresolvedCourseIds}
+        courseMap={courseMap}
+        effectiveResults={effectiveResults}
+      />
     </section>
   </div>
 );
@@ -1414,25 +1667,255 @@ const RulesView = () => (
   </div>
 );
 
+const PrintReport = ({ report }: { report: ReportData }) => {
+  const alertIds = uniqueCourseIds(
+    report.graduation.mandatoryRepeatCourseIds,
+    report.graduation.pendingCourseIds,
+    report.graduation.failCourseIds
+  );
+  const selectedPlan = report.projection.possiblePlans[0];
+  const selectedPlanGrades = selectedPlan?.grades ?? report.projection.recommendedGrades;
+  const remainingCourses = report.courses.filter((course) =>
+    report.projection.remainingCourseIds.includes(course.id)
+  );
+
+  return (
+    <section className="print-report" aria-label="Printable GPA summary report">
+      <header className="print-report-header">
+        <img src={usjpLogo} alt="" />
+        <div>
+          <p>University of Sri Jayewardenepura - FMSC</p>
+          <h1>GPA Summary Report</h1>
+          <span>Generated {new Date().toLocaleString()}</span>
+        </div>
+      </header>
+
+      <section className="print-section">
+        <h2>Dashboard Summary</h2>
+        <div className="print-metric-grid">
+          <div><span>Current GPA</span><strong>{formatGpa(report.overallGpa.gpa)}</strong></div>
+          <div><span>Credits</span><strong>{report.completedCredits}/{report.prescribedCredits}</strong></div>
+          <div><span>Graduation</span><strong>{report.graduation.canGraduateProvisionally ? "Ready" : "Not Ready"}</strong></div>
+          <div><span>Current Standing</span><strong>{report.classification.awardedClass}</strong></div>
+        </div>
+        <dl className="print-key-grid">
+          <div><dt>Programme</dt><dd>{report.programme.programmeName}</dd></div>
+          <div><dt>Pathway / option</dt><dd>{pathwayLabel(report.programme, report.activeSelection)}</dd></div>
+          <div><dt>Graded credits</dt><dd>{report.overallGpa.gradedCredits}</dd></div>
+          <div><dt>Academic alerts</dt><dd>{alertIds.length}</dd></div>
+        </dl>
+      </section>
+
+      <section className="print-section">
+        <h2>Current GPA Planner Scenario</h2>
+        <dl className="print-key-grid">
+          <div><dt>Scenario</dt><dd>{report.scenario.name}</dd></div>
+          <div><dt>Target GPA</dt><dd>{report.scenario.targetGpa.toFixed(2)}</dd></div>
+          <div><dt>Suggested final GPA</dt><dd>{formatGpa(report.projection.recommendedGpa)}</dd></div>
+          <div><dt>Possible range</dt><dd>{formatGpa(report.projection.minPossibleGpa)} - {formatGpa(report.projection.maxPossibleGpa)}</dd></div>
+          <div><dt>Remaining GPA credits</dt><dd>{report.projection.remainingGpaCredits}</dd></div>
+          <div><dt>Required average</dt><dd>{report.projection.requiredAverageLabel}</dd></div>
+        </dl>
+        <p>{report.projection.recommendationSummary}</p>
+        {selectedPlan && (
+          <p>
+            Selected report plan: {selectedPlan.name} with final GPA {formatGpa(selectedPlan.gpa)}.
+          </p>
+        )}
+      </section>
+
+      <section className="print-section">
+        <h2>Annual Progress</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>GPA</th>
+              <th>Credits</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.graduation.yearProgress.map((year) => (
+              <tr key={year.year}>
+                <td>Year {year.year}</td>
+                <td>{formatGpa(year.gpa.gpa)}</td>
+                <td>{year.completedCredits}/{year.totalCredits}</td>
+                <td>{year.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="print-section">
+        <h2>Academic Alerts</h2>
+        {alertIds.length === 0 ? (
+          <p>No repeat, pending, or failed courses in the active selection.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Course</th>
+                <th>Alert</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alertIds.map((id) => {
+                const course = report.courses.find((item) => item.id === id);
+                const alert = courseAlertDetails(report.effectiveResults[id] ?? "");
+                return (
+                  <tr key={id}>
+                    <td>{courseLabel(course)}</td>
+                    <td>{alert.label}</td>
+                    <td>{alert.detail}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="print-section">
+        <h2>Selection Status</h2>
+        {report.selectionIssues.length === 0 ? (
+          <p>Pathway and elective selections satisfy the encoded Prospectus rules.</p>
+        ) : (
+          <ul className="print-list">
+            {report.selectionIssues.map((issue) => (
+              <li key={issue.message}>{issue.message}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="print-section">
+        <h2>Current Class Standing</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Class</th>
+              <th>Status</th>
+              <th>High-grade credits</th>
+              <th>Evaluated credits</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.classification.results.map((result) => (
+              <tr key={result.className}>
+                <td>{result.className}</td>
+                <td>{result.eligible ? "Eligible" : "No"}</td>
+                <td>{result.highGradeCredits}/{result.requiredHighGradeCredits}</td>
+                <td>{result.evaluatedCredits}</td>
+                <td>{result.reasons.join(" | ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {remainingCourses.length > 0 && (
+        <section className="print-section">
+          <h2>Suggested Future Grades</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Semester</th>
+                <th>Course</th>
+                <th>Credits</th>
+                <th>Suggested grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {remainingCourses.map((course) => (
+                <tr key={course.id}>
+                  <td>{course.year}</td>
+                  <td>{course.semester}</td>
+                  <td>{courseLabel(course)}</td>
+                  <td>{course.credits}</td>
+                  <td>{selectedPlanGrades[course.id] ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      <section className="print-section">
+        <h2>Graduation Checklist</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Status</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.graduation.checklist.map((item) => (
+              <tr key={item.id}>
+                <td>{item.label}</td>
+                <td>{item.status}</td>
+                <td>{item.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="print-section">
+        <h2>All Course Results</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Y/S</th>
+              <th>Course</th>
+              <th>Credits</th>
+              <th>Entered</th>
+              <th>Effective</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.courses.map((course) => {
+              const effectiveResult = report.effectiveResults[course.id] ?? "";
+              return (
+                <tr key={course.id}>
+                  <td>Y{course.year} S{course.semester}</td>
+                  <td>{courseLabel(course)}</td>
+                  <td>{course.credits}</td>
+                  <td>{resultLabel(report.records[course.id]?.result)}</td>
+                  <td>{resultLabel(effectiveResult)}</td>
+                  <td>{completionStatus(effectiveResult)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      <p className="print-disclaimer">{report.graduation.disclaimer}</p>
+    </section>
+  );
+};
+
 const DataView = ({
   data,
-  programme,
   courses,
   records,
   onUpdateData,
-  onImport,
-  onExportJson,
   onExportCsv,
   onPrint,
   onReset
 }: {
   data: StudentData;
-  programme: (typeof programmes)[number];
   courses: Course[];
   records: Record<string, CourseRecord>;
   onUpdateData: (updater: (previous: StudentData) => StudentData) => void;
-  onImport: (event: ChangeEvent<HTMLInputElement>) => void;
-  onExportJson: () => void;
   onExportCsv: () => void;
   onPrint: () => void;
   onReset: () => void;
@@ -1440,81 +1923,6 @@ const DataView = ({
   const usedRecords = courses.filter((course) => records[course.id]).length;
   return (
     <div className="view-stack">
-      <section className="panel">
-        <div className="panel-heading">
-          <span>Registration</span>
-          <span className="small">{programme.shortName}</span>
-        </div>
-        <div className="form-grid">
-          <label>
-            <span className="field-label">First academic year</span>
-            <input
-              className="control"
-              value={data.registrationInfo.firstAcademicYear ?? ""}
-              placeholder="2026/2027"
-              onChange={(event) =>
-                onUpdateData((previous) => ({
-                  ...previous,
-                  registrationInfo: {
-                    ...previous.registrationInfo,
-                    firstAcademicYear: event.target.value
-                  }
-                }))
-              }
-            />
-          </label>
-          <label>
-            <span className="field-label">Completion academic year</span>
-            <input
-              className="control"
-              value={data.registrationInfo.currentOrCompletionAcademicYear ?? ""}
-              placeholder="2029/2030"
-              onChange={(event) =>
-                onUpdateData((previous) => ({
-                  ...previous,
-                  registrationInfo: {
-                    ...previous.registrationInfo,
-                    currentOrCompletionAcademicYear: event.target.value
-                  }
-                }))
-              }
-            />
-          </label>
-          <label className="toggle-line">
-            <input
-              type="checkbox"
-              checked={data.registrationInfo.approvedExtensionOrValidReason === true}
-              onChange={(event) =>
-                onUpdateData((previous) => ({
-                  ...previous,
-                  registrationInfo: {
-                    ...previous.registrationInfo,
-                    approvedExtensionOrValidReason: event.target.checked
-                  }
-                }))
-              }
-            />
-            Approved valid reason
-          </label>
-          <label className="toggle-line">
-            <input
-              type="checkbox"
-              checked={data.registrationInfo.lastAttemptProvision === true}
-              onChange={(event) =>
-                onUpdateData((previous) => ({
-                  ...previous,
-                  registrationInfo: {
-                    ...previous.registrationInfo,
-                    lastAttemptProvision: event.target.checked
-                  }
-                }))
-              }
-            />
-            Last-attempt provision
-          </label>
-        </div>
-      </section>
-
       <section className="panel">
         <div className="panel-heading">
           <span>Preferences</span>
@@ -1574,13 +1982,6 @@ const DataView = ({
       </section>
 
       <section className="panel action-panel">
-        <button type="button" className="secondary-button" onClick={onExportJson}>
-          <FileJson aria-hidden="true" size={16} /> Export JSON
-        </button>
-        <label className="secondary-button file-button">
-          <Upload aria-hidden="true" size={16} /> Import JSON
-          <input type="file" accept="application/json,.json" onChange={onImport} />
-        </label>
         <button type="button" className="secondary-button" onClick={onExportCsv}>
           <Download aria-hidden="true" size={16} /> Export CSV
         </button>

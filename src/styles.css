@@ -334,6 +334,23 @@ button {
   font-weight: 700;
 }
 
+.segmented button span,
+.segmented button small {
+  display: block;
+  line-height: 1.15;
+}
+
+.segmented button small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.segmented button.active small {
+  color: var(--accent);
+}
+
 .segmented button.active,
 .tab-button.active {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
@@ -500,6 +517,33 @@ button {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
+}
+
+.course-alert-list li {
+  margin: 8px 0;
+}
+
+.course-alert-list span {
+  display: block;
+  color: var(--text);
+}
+
+.course-alert-list strong {
+  display: inline-flex;
+  margin-top: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--warn);
+  font-size: 0.78rem;
+}
+
+.course-alert-list small {
+  display: block;
+  max-width: 60ch;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .plain-list.compact {
@@ -867,6 +911,10 @@ th {
   cursor: pointer;
 }
 
+.print-report {
+  display: none;
+}
+
 @media (max-width: 1120px) {
   .workspace-layout,
   .two-column {
@@ -948,12 +996,9 @@ th {
 }
 
 @media print {
-  .sidebar,
-  .tabbar,
-  .toolbar,
-  .action-panel,
-  .topbar-actions,
-  .icon-button {
+  .topbar,
+  .workspace-layout,
+  .storage-banner {
     display: none !important;
   }
 
@@ -962,8 +1007,141 @@ th {
     background: #fff;
   }
 
-  .workspace-layout {
+  .app-shell {
+    padding: 0;
+  }
+
+  .print-report {
     display: block;
+    color: #111;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .print-report-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #111;
+  }
+
+  .print-report-header img {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+  }
+
+  .print-report-header p,
+  .print-report-header h1,
+  .print-report-header span,
+  .print-section h2,
+  .print-section p,
+  .print-disclaimer {
+    margin: 0;
+  }
+
+  .print-report-header p {
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .print-report-header h1 {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  .print-report-header span,
+  .print-section p,
+  .print-disclaimer {
+    color: #444;
+  }
+
+  .print-section {
+    margin: 0 0 14px;
+  }
+
+  .print-section h2 {
+    margin-bottom: 7px;
+    font-size: 14px;
+  }
+
+  .print-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 9px;
+    break-inside: avoid;
+  }
+
+  .print-metric-grid div,
+  .print-key-grid div {
+    border: 1px solid #ccc;
+    padding: 6px;
+  }
+
+  .print-metric-grid span,
+  .print-key-grid dt {
+    display: block;
+    color: #555;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .print-metric-grid strong {
+    display: block;
+    margin-top: 2px;
+    font-size: 16px;
+  }
+
+  .print-key-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin: 0;
+    break-inside: avoid;
+  }
+
+  .print-key-grid dd {
+    margin: 2px 0 0;
+  }
+
+  .print-list {
+    margin: 0;
+    padding-left: 16px;
+  }
+
+  .print-list li {
+    margin: 2px 0;
+  }
+
+  .print-report table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+
+  .print-report th,
+  .print-report td {
+    border: 1px solid #d0d0d0;
+    padding: 4px 5px;
+    white-space: normal;
+    vertical-align: top;
+  }
+
+  .print-report th {
+    color: #222;
+    background: #f1f1f1;
+    font-size: 9px;
+  }
+
+  .print-disclaimer {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #bbb;
+    font-size: 10px;
   }
 
   .panel,
