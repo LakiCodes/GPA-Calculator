@@ -654,6 +654,7 @@ const ProgrammeControls = ({
         const selectedCredits = sumCredits(group.availableCourses.filter((course) => selected.includes(course.id)));
         const requiredCredits =
           group.requiredCredits ?? group.requiredSelectionCount * (group.availableCourses[0]?.credits ?? 0);
+        const singleSelection = group.maximumSelectionCount === 1;
         return (
           <div className="panel" key={group.id}>
             <div className="panel-heading">
@@ -666,13 +667,15 @@ const ProgrammeControls = ({
                 .map((course) => {
                   const checked = selected.includes(course.id);
                   const disabled =
+                    !singleSelection &&
                     !checked &&
                     (selected.length >= group.maximumSelectionCount ||
                       selectedCredits + course.credits > requiredCredits);
                   return (
                     <label key={course.id} className={clsx("choice-row", disabled && "disabled")}>
                       <input
-                        type="checkbox"
+                        type={singleSelection ? "radio" : "checkbox"}
+                        name={singleSelection ? group.id : undefined}
                         checked={checked}
                         disabled={disabled}
                         onChange={(event) => onToggleElective(group, course, event.target.checked)}
