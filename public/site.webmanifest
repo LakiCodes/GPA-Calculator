@@ -1,0 +1,16 @@
+{
+  "name": "FMSC GPA Calculator & Planner",
+  "short_name": "FMSC GPA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#146b61",
+  "icons": [
+    {
+      "src": "/usjp-logo.jpeg",
+      "sizes": "314x317",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
