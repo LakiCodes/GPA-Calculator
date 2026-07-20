@@ -1642,7 +1642,7 @@ const ProgressView = ({
                 <span>
                   {result.className === "Pass"
                     ? `${classification.currentGpa ?? "--"} current GPA from ${classification.evaluatedCredits} graded credits`
-                    : `${result.highGradeCredits}/${result.requiredHighGradeCredits} high-grade credits from ${result.evaluatedCredits} graded credits - ${result.poorGradeCourseCount} poor pass [...]
+                    : `${result.highGradeCredits}/${result.requiredHighGradeCredits} high-grade credits from ${result.evaluatedCredits} graded credits - ${result.poorGradeCourseCount} poor pass courses`}
                 </span>
               </div>
               <span className={clsx("result-chip", result.eligible && "filled")}>
@@ -2043,6 +2043,33 @@ const DataView = ({
       </section>
 
       <section className="panel action-panel">
+        <button type="button" className="secondary-button" onClick={onExportCsv}>
+          <Download aria-hidden="true" size={16} /> Export CSV
+        </button>
+        <button type="button" className="secondary-button" onClick={onExportJson}>
+          <Download aria-hidden="true" size={16} /> Backup JSON
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => importInputRef.current?.click()}
+        >
+          <Upload aria-hidden="true" size={16} /> Import JSON
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={async (event) => {
+            const input = event.currentTarget;
+            const file = input.files?.[0];
+            if (file) {
+              onImportJson(await file.text());
+            }
+            input.value = "";
+          }}
+        />
         <button type="button" className="secondary-button" onClick={onPrint}>
           <Printer aria-hidden="true" size={16} /> Print report
         </button>
