@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
@@ -13,6 +13,7 @@ import {
   Settings,
   Target,
   Trash2,
+  Upload,
   XCircle,
   type LucideIcon
 } from "lucide-react";
@@ -55,10 +56,14 @@ import {
   downloadText,
   loadStudentData,
   loadStorageNoticeAccepted,
+  parseImportedStudentData,
   saveStudentData,
-  saveStorageNoticeAccepted
+  saveStorageNoticeAccepted,
+  toExportJson
 } from "./storage/localStore";
-import usjpLogo from "./assets/usjp-logo.jpeg";
+import { newId } from "./utils/id";
+
+const usjpLogo = "/usjp-logo.jpeg";
 
 type TabId = "dashboard" | "results" | "planner" | "progress" | "rules" | "data";
 type YearFilter = "all" | YearLevel;
@@ -86,11 +91,6 @@ const attemptTypes: Array<{ value: AttemptType; label: string }> = [
 ];
 
 const resultOptions = RESULT_CODES as readonly GradeEntry[];
-
-const newId = (): string =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const selectCoursesForGroup = (group: ElectiveGroup, pathwayId?: string): string[] => {
   const available = group.availableCourses.filter((course) =>
@@ -153,7 +153,9 @@ const formatGpa = (value: string | null): string => value ?? "--";
 
 const csvEscape = (value: string | number | null | undefined): string => {
   const text = String(value ?? "");
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  // Neutralize spreadsheet formula prefixes so exported cells are never executed.
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 
 const courseLabel = (course?: Course): string =>
@@ -523,27 +525,57 @@ function App() {
   const completedCredits = selectedCourses
     .filter((course) => isCompletedResult(effectiveResults[course.id] ?? ""))
     .reduce((sum, course) => sum + course.credits, 0);
-  const reportData: ReportData = {
-    data,
-    programme,
-    activeSelection,
-    courses: selectedCourses,
-    records: data.courseRecords,
-    effectiveResults,
-    overallGpa,
-    completedCredits,
-    prescribedCredits,
-    graduation,
-    classification,
-    selectionIssues,
-    scenario: activeScenario,
-    projection
-  };
+  const reportData: ReportData = useMemo(
+    () => ({
+      data,
+      programme,
+      activeSelection,
+      courses: selectedCourses,
+      records: data.courseRecords,
+      effectiveResults,
+      overallGpa,
+      completedCredits,
+      prescribedCredits,
+      graduation,
+      classification,
+      selectionIssues,
+      scenario: activeScenario,
+      projection
+    }),
+    [
+      data,
+      programme,
+      activeSelection,
+      selectedCourses,
+      effectiveResults,
+      overallGpa,
+      completedCredits,
+      prescribedCredits,
+      graduation,
+      classification,
+      selectionIssues,
+      activeScenario,
+      projection
+    ]
+  );
 
   useEffect(() => {
-    saveStudentData(data);
     document.documentElement.dataset.theme = data.preferences.theme;
+  }, [data.preferences.theme]);
+
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveStudentData(data), 300);
+    return () => window.clearTimeout(timer);
   }, [data]);
+
+  useEffect(() => {
+    const flush = () => saveStudentData(dataRef.current);
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
 
   useEffect(() => {
     if (!data.plannerScenarios.some((scenario) => scenario.id === activeScenarioId)) {
@@ -649,6 +681,26 @@ function App() {
       plannerScenarios: [...previous.plannerScenarios, scenario]
     }));
     setActiveScenarioId(scenario.id);
+  };
+
+  const importJsonText = (text: string): void => {
+    let imported: StudentData;
+    try {
+      imported = parseImportedStudentData(text);
+    } catch {
+      window.alert("The selected file is not a valid backup from this calculator.");
+      return;
+    }
+    if (!window.confirm("Replace the data saved in this browser with the imported file?")) {
+      return;
+    }
+    setData({
+      ...imported,
+      activeSelection:
+        imported.activeSelection ?? defaultSelectionForProgramme(programmes[0].programmeId),
+      plannerScenarios:
+        imported.plannerScenarios.length > 0 ? imported.plannerScenarios : [defaultScenario(3.3)]
+    });
   };
 
   const resetAll = (): void => {
@@ -786,6 +838,8 @@ function App() {
               onExportCsv={() =>
                 downloadText("fmsc-gpa-summary.csv", makeCsv(reportData), "text/csv;charset=utf-8")
               }
+              onExportJson={() => downloadText("fmsc-gpa-data.json", toExportJson(data))}
+              onImportJson={importJsonText}
               onPrint={() => window.print()}
               onReset={resetAll}
             />
@@ -1230,12 +1284,14 @@ const CourseResultRow = ({
               max={100}
               placeholder="Marks"
               onBlur={(event) => {
-                const value = event.currentTarget.value;
+                const input = event.currentTarget;
+                const value = input.value;
                 if (value.trim() === "") {
                   return;
                 }
                 try {
                   updateResult(gradeFromMark(Number(value)));
+                  input.value = "";
                 } catch {
                   window.alert("Marks must be between 0 and 100.");
                 }
@@ -1667,7 +1723,7 @@ const RulesView = () => (
   </div>
 );
 
-const PrintReport = ({ report }: { report: ReportData }) => {
+const PrintReport = memo(({ report }: { report: ReportData }) => {
   const alertIds = uniqueCourseIds(
     report.graduation.mandatoryRepeatCourseIds,
     report.graduation.pendingCourseIds,
@@ -1901,7 +1957,7 @@ const PrintReport = ({ report }: { report: ReportData }) => {
       <p className="print-disclaimer">{report.graduation.disclaimer}</p>
     </section>
   );
-};
+});
 
 const DataView = ({
   data,
@@ -1909,6 +1965,8 @@ const DataView = ({
   records,
   onUpdateData,
   onExportCsv,
+  onExportJson,
+  onImportJson,
   onPrint,
   onReset
 }: {
@@ -1917,10 +1975,13 @@ const DataView = ({
   records: Record<string, CourseRecord>;
   onUpdateData: (updater: (previous: StudentData) => StudentData) => void;
   onExportCsv: () => void;
+  onExportJson: () => void;
+  onImportJson: (text: string) => void;
   onPrint: () => void;
   onReset: () => void;
 }) => {
   const usedRecords = courses.filter((course) => records[course.id]).length;
+  const importInputRef = useRef<HTMLInputElement>(null);
   return (
     <div className="view-stack">
       <section className="panel">
@@ -1985,6 +2046,30 @@ const DataView = ({
         <button type="button" className="secondary-button" onClick={onExportCsv}>
           <Download aria-hidden="true" size={16} /> Export CSV
         </button>
+        <button type="button" className="secondary-button" onClick={onExportJson}>
+          <Download aria-hidden="true" size={16} /> Backup JSON
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => importInputRef.current?.click()}
+        >
+          <Upload aria-hidden="true" size={16} /> Import JSON
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={async (event) => {
+            const input = event.currentTarget;
+            const file = input.files?.[0];
+            if (file) {
+              onImportJson(await file.text());
+            }
+            input.value = "";
+          }}
+        />
         <button type="button" className="secondary-button" onClick={onPrint}>
           <Printer aria-hidden="true" size={16} /> Print report
         </button>

@@ -1,4 +1,5 @@
 import { GRADE_POINTS_HUNDREDTHS } from "../data/gradeScale";
+import { newId } from "../utils/id";
 import type {
   Course,
   CourseRecord,
@@ -463,7 +464,7 @@ export const calculatePlannerProjection = (
 };
 
 export const defaultScenario = (targetGpa = 3.3): PlannerScenario => ({
-  id: crypto.randomUUID(),
+  id: newId(),
   name: "Primary target",
   targetGpa,
   projectedGrades: {},
