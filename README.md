@@ -5,11 +5,11 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-65.9%25-3178C6?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square)
-![License](https://img.shields.io/badge/License-Unlicensed-gray?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 ## 🎯 Overview
 
-FMSC GPA Calculator & Planner is a comprehensive academic planning tool designed specifically for the University of Sri Jayewardenepura Faculty of Management Studies and Commerce (FMSC) Prospectus 2026. It enables students to:
+FMSC GPA Calculator & Planner is a comprehensive academic planning tool designed specifically for the University of Sri Jayewardenepura Faculty of Management Studies and Commerce (FMSC) Prospectus[...]
 
 - ✅ Select from all 12 FMSC honours degree programmes
 - ✅ Navigate complex pathways, specialisations, and elective groups
@@ -366,7 +366,7 @@ npm run validate:curriculum # Validate all 12 programmes vs. Prospectus 2026
 
 ## 📄 License
 
-Unlicensed. This project is provided as-is for educational and planning purposes.
+Licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
 
 ---
 
@@ -388,6 +388,6 @@ Good luck with your studies! 🚀
 
 <div align="center">
 
-**[🔗 Visit the App](https://gpa-calculator-laki2.vercel.app)** • **[📖 Read the Spec](./GPA_APP_SPEC.md)** • **[🐛 Report Issues](https://github.com/Lakshitha641/GPA-Calculator/issues)**
+**[🔗 Visit the App](https://gpa-calculator-laki2.vercel.app)** • **[📖 Read the Spec](./GPA_APP_SPEC.md)** • **[🐛 Report Issues](https://github.com/Lakshitha641/GPA-Calculator/issues)[...]
 
 </div>
