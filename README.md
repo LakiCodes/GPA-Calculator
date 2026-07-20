@@ -22,7 +22,7 @@ FMSC GPA Calculator & Planner is a comprehensive academic planning tool designed
 
 Built with **React 19**, **TypeScript**, and **Vite**. Deployable anywhere. Works offline.
 
-**[Live Demo →](https://gpa-calculator-laki2.vercel.app)**
+**[Live Demo →](https://gpa-calculator-fmsc.vercel.app)**
 
 ---
 
@@ -189,7 +189,7 @@ docs/
 ├── GPA_APP_SPEC.md                 # Full 1000+ line specification
 ├── IMPLEMENTATION_PLAN.md          # Risk analysis & roadmap
 ├── HOSTING_GUIDE.md                # Deployment instructions
-├── PRIVACY.md                      # Privacy assurance
+├── PRIVACY.md                       # Privacy assurance
 └── REQUIREMENT_CHECKLIST.md        # Feature completeness tracker
 ```
 
@@ -388,6 +388,6 @@ Good luck with your studies! 🚀
 
 <div align="center">
 
-**[🔗 Visit the App](https://gpa-calculator-laki2.vercel.app)** • **[📖 Read the Spec](./GPA_APP_SPEC.md)** • **[🐛 Report Issues](https://github.com/Lakshitha641/GPA-Calculator/issues)[...]
+**[🔗 Visit the App](https://gpa-calculator-fmsc.vercel.app)** • **[📖 Read the Spec](./GPA_APP_SPEC.md)** • **[🐛 Report Issues](https://github.com/Lakshitha641/GPA-Calculator/issues)[...]
 
 </div>
