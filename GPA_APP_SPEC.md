@@ -1,5 +1,3 @@
-You are a senior full-stack software engineer, data modeller, QA engineer and UI/UX designer. Build a complete, production-quality GPA calculator and academic-planning web application for students of the Faculty of Management Studies and Commerce, University of Sri Jayewardenepura.
-
 APP NAME
 FMSC GPA Calculator & Planner
 
