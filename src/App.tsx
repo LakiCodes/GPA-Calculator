@@ -18,6 +18,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import clsx from "clsx";
+import { Analytics } from "@vercel/analytics/react";
 
 import { evaluateClassification } from "./calculations/classification";
 import {
@@ -2077,6 +2078,7 @@ const DataView = ({
           <RefreshCcw aria-hidden="true" size={16} /> Reset
         </button>
       </section>
+      <Analytics />
     </div>
   );
 };
