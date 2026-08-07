@@ -4,11 +4,15 @@ import type {
   Course,
   CourseRecord,
   LetterGrade,
-  PlannerScenario
+  PlannerScenario,
+  Programme,
+  CurriculumSelection,
+  RegistrationInfo
 } from "../domain/types";
 
 import { calculateCourseGpa, resultPointHundredths, truncateGpa } from "./gpa";
 import { effectiveResultMap } from "./records";
+import { evaluateClassification, type ClassName } from "./classification";
 
 export interface PlannerProjection {
   currentGpa: ReturnType<typeof calculateCourseGpa>;
@@ -196,7 +200,14 @@ const buildFutureGradePlans = (
   remainingCourses: Course[],
   projectedWeighted: number,
   projectedCredits: number,
-  targetHundredths: number
+  targetHundredths: number,
+  records: Record<string, CourseRecord>,
+  options?: {
+    programme?: Programme;
+    selection?: CurriculumSelection;
+    registrationInfo?: RegistrationInfo;
+    classTarget?: ClassName;
+  }
 ): {
   recommendedGrades: Record<string, LetterGrade>;
   recommendedGpa: string | null;
@@ -358,13 +369,45 @@ const buildFutureGradePlans = (
     }
   }
 
-  const primaryPlan = possiblePlans[0];
+  // If a class target has been provided, filter the candidate plans by simulating
+  // applying the plan grades to the remaining courses and evaluating the
+  // classification rules. This ensures the recommended plans achieve the
+  // selected class (e.g. First Class) rather than only reaching a GPA threshold.
+  let filteredPlans = possiblePlans;
+  if (options?.classTarget && options?.programme) {
+    filteredPlans = possiblePlans.filter((plan) => {
+      const simulatedRecords: Record<string, CourseRecord> = { ...records };
+      for (const course of remainingCourses) {
+        simulatedRecords[course.id] = {
+          courseId: course.id,
+          result: plan.grades[course.id],
+          attempts: []
+        };
+      }
+      const evaluation = evaluateClassification(
+        options.programme!,
+        options.selection,
+        simulatedRecords,
+        options.registrationInfo ?? {}
+      );
+      const rule = evaluation.results.find((r) => r.className === options.classTarget);
+      return rule?.eligible === true;
+    });
+
+    // If filtering makes no plans available, keep the original suggestions but
+    // surface an explanatory summary later.
+    if (filteredPlans.length === 0) {
+      filteredPlans = possiblePlans;
+    }
+  }
+
+  const primaryPlan = filteredPlans[0];
   const recommendedGrades = primaryPlan?.grades ?? {};
   const recommendedGpa = primaryPlan?.gpa ?? null;
   const distinctGrades = [...new Set(Object.values(recommendedGrades))];
   const summary =
-    possiblePlans.length > 1
-      ? `${possiblePlans.length} possible future grade plans can reach the target.`
+    filteredPlans.length > 1
+      ? `${filteredPlans.length} possible future grade plans can reach the target.`
       : distinctGrades.length === 1
       ? `Aim for ${distinctGrades[0]} or better in each future GPA-bearing course.`
       : `Aim for the suggested mix of ${distinctGrades.join(", ")} grades across future GPA-bearing courses.`;
@@ -373,14 +416,20 @@ const buildFutureGradePlans = (
     recommendedGrades,
     recommendedGpa,
     recommendationSummary: `${summary} Selected plan GPA: ${recommendedGpa ?? "--"}.`,
-    possiblePlans: possiblePlans.slice(0, 5)
+    possiblePlans: filteredPlans.slice(0, 5)
   };
 };
 
 export const calculatePlannerProjection = (
   courses: Course[],
   records: Record<string, CourseRecord>,
-  scenario: PlannerScenario
+  scenario: PlannerScenario,
+  options?: {
+    programme?: Programme;
+    selection?: CurriculumSelection;
+    registrationInfo?: RegistrationInfo;
+    classTarget?: ClassName;
+  }
 ): PlannerProjection => {
   const currentResults = effectiveResultMap(courses, records);
   const currentGpa = calculateCourseGpa(courses, currentResults);
@@ -440,7 +489,9 @@ export const calculatePlannerProjection = (
     remainingCourses,
     projectedWeighted,
     projectedCredits,
-    targetHundredths
+    targetHundredths,
+    records,
+    options
   );
 
   return {
