@@ -56,7 +56,7 @@ const classRules: Array<{
   {
     className: "First Class",
     gpa: 3.7,
-    highGrade: "A-",
+    highGrade: "A",
     poorLimit: 0,
     allowBelowC: false
   },
