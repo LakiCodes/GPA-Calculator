@@ -88,6 +88,15 @@ export interface ExpectedTotals {
   notes?: string[];
 }
 
+// Degree class names used across the app. Keep this in domain/types so other
+// modules (classification, planner, UI) can reference the canonical set without
+// circular imports.
+export type ClassName =
+  | "First Class"
+  | "Second Class (Upper Division)"
+  | "Second Class (Lower Division)"
+  | "Pass";
+
 export interface Programme {
   prospectusVersion: ProspectusVersion;
   programmeId: string;
@@ -132,6 +141,7 @@ export interface PlannerScenario {
   targetGpa: number;
   projectedGrades: Record<string, GradeEntry>;
   updatedAt: string;
+  classTarget?: ClassName;
 }
 
 export interface RegistrationInfo {
