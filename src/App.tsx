@@ -155,7 +155,6 @@ const formatGpa = (value: string | null): string => value ?? "--";
 
 const csvEscape = (value: string | number | null | undefined): string => {
   const text = String(value ?? "");
-  // Neutralize spreadsheet formula prefixes so exported cells are never executed.
   const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
@@ -766,9 +765,16 @@ function App() {
           <ProgrammeControls
             programme={programme}
             activeSelection={activeSelection}
+            registrationInfo={data.registrationInfo}
             onProgrammeChange={changeProgramme}
             onPathwayChange={changePathway}
             onToggleElective={toggleElective}
+            onRegistrationInfoChange={(updater) =>
+              updateData((previous) => ({
+                ...previous,
+                registrationInfo: updater(previous.registrationInfo)
+              }))
+            }
             issues={selectionIssues}
           />
         </aside>
@@ -897,17 +903,23 @@ function App() {
 const ProgrammeControls = ({
   programme,
   activeSelection,
+  registrationInfo,
   issues,
   onProgrammeChange,
   onPathwayChange,
-  onToggleElective
+  onToggleElective,
+  onRegistrationInfoChange
 }: {
   programme: (typeof programmes)[number];
   activeSelection: CurriculumSelection;
+  registrationInfo: StudentData["registrationInfo"];
   issues: ReturnType<typeof getSelectionIssues>;
   onProgrammeChange: (programmeId: string) => void;
   onPathwayChange: (pathwayId: string) => void;
   onToggleElective: (group: ElectiveGroup, course: Course, checked: boolean) => void;
+  onRegistrationInfoChange: (
+    updater: (registrationInfo: StudentData["registrationInfo"]) => StudentData["registrationInfo"]
+  ) => void;
 }) => {
   const groups = getApplicableElectiveGroups(programme, activeSelection);
 
@@ -929,6 +941,65 @@ const ProgrammeControls = ({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="panel">
+        <div className="panel-heading">
+          <span>Academic years</span>
+          <span className="small">Class rule</span>
+        </div>
+        <div className="form-grid">
+          <label>
+            <span className="field-label">First academic year</span>
+            <input
+              className="control"
+              type="text"
+              inputMode="numeric"
+              placeholder="2022/2023"
+              value={registrationInfo.firstAcademicYear ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                onRegistrationInfoChange((current) => ({
+                  ...current,
+                  firstAcademicYear: value || undefined
+                }));
+              }}
+            />
+          </label>
+          <label>
+            <span className="field-label">Current / completion year</span>
+            <input
+              className="control"
+              type="text"
+              inputMode="numeric"
+              placeholder="2025/2026"
+              value={registrationInfo.currentOrCompletionAcademicYear ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                onRegistrationInfoChange((current) => ({
+                  ...current,
+                  currentOrCompletionAcademicYear: value || undefined
+                }));
+              }}
+            />
+          </label>
+        </div>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={registrationInfo.approvedExtensionOrValidReason === true}
+            onChange={(event) =>
+              onRegistrationInfoChange((current) => ({
+                ...current,
+                approvedExtensionOrValidReason: event.target.checked
+              }))
+            }
+          />
+          Approved extension or valid reason
+        </label>
+        <p className="fine-print">
+          Used to verify the four-year degree-class rule. Example: 2022/2023 to 2025/2026.
+        </p>
       </div>
 
       {programme.pathways.length > 0 && (
