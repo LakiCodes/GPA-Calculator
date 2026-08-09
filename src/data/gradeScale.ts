@@ -47,17 +47,17 @@ export const MARK_BANDS: Array<{
   grade: LetterGrade;
 }> = [
   { min: 85, max: 100, grade: "A+" },
-  { min: 70, max: 84, grade: "A" },
-  { min: 65, max: 69, grade: "A-" },
-  { min: 60, max: 64, grade: "B+" },
-  { min: 55, max: 59, grade: "B" },
-  { min: 50, max: 54, grade: "B-" },
-  { min: 45, max: 49, grade: "C+" },
-  { min: 40, max: 44, grade: "C" },
-  { min: 35, max: 39, grade: "C-" },
-  { min: 30, max: 34, grade: "D+" },
-  { min: 25, max: 29, grade: "D" },
-  { min: 0, max: 24, grade: "E" }
+  { min: 70, max: 84.99, grade: "A" },
+  { min: 65, max: 69.99, grade: "A-" },
+  { min: 60, max: 64.99, grade: "B+" },
+  { min: 55, max: 59.99, grade: "B" },
+  { min: 50, max: 54.99, grade: "B-" },
+  { min: 45, max: 49.99, grade: "C+" },
+  { min: 40, max: 44.99, grade: "C" },
+  { min: 35, max: 39.99, grade: "C-" },
+  { min: 30, max: 34.99, grade: "D+" },
+  { min: 25, max: 29.99, grade: "D" },
+  { min: 0, max: 24.99, grade: "E" }
 ];
 
 export const isLetterGrade = (value: string): value is LetterGrade =>
