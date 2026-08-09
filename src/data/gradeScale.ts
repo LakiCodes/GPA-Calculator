@@ -71,7 +71,9 @@ export const gradeFromMark = (mark: number): LetterGrade => {
     throw new RangeError("Marks must be between 0 and 100.");
   }
 
-  const band = MARK_BANDS.find((entry) => mark >= entry.min && mark <= entry.max);
+  // Match on lower bounds (descending order) to handle decimal marks correctly.
+  // This ensures marks like 84.5 map to the correct band.
+  const band = [...MARK_BANDS].reverse().find((entry) => mark >= entry.min);
   if (!band) {
     throw new RangeError("Marks must be between 0 and 100.");
   }
