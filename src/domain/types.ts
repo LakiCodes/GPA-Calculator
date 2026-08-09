@@ -141,7 +141,9 @@ export interface PlannerScenario {
   targetGpa: number;
   projectedGrades: Record<string, GradeEntry>;
   updatedAt: string;
-  classTarget?: ClassName;
+  // undefined keeps backward compatibility with older saved quick-target scenarios;
+  // null explicitly means the user selected custom GPA-only planning.
+  classTarget?: ClassName | null;
 }
 
 export interface RegistrationInfo {
