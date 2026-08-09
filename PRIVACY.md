@@ -1,31 +1,36 @@
 # Privacy Notes
 
-This calculator is a client-only static web app.
+This calculator is a client-side academic planning application.
 
-## What Is Stored
+## What Is Stored in the Browser
 
 The app stores the following in the visitor's browser local storage:
 
 - Selected degree programme, pathway, and electives
 - Entered course results and repeat attempts
-- GPA planner scenarios
+- GPA / degree-class planner scenarios
 - Theme and grade-entry preferences
-- Registration fields entered by the user
 
-## What Is Not Stored
+Academic records are not stored in a shared application database.
 
-The app does not store grade data on a server and does not use a shared database.
+## Hosted Analytics
 
-The app does not need cookies for grade data. Cookies would be a worse fit because browsers send cookies to the server with requests.
+The hosted Vercel deployment includes **Vercel Analytics** for aggregate website usage metrics.
 
-## Visibility
+The calculator does not use an academic-record backend to upload or store the grades, course results, repeat attempts, or planner records entered by students.
 
-Saved data is visible only to someone using the same browser profile on the same device. A different student on a different device or browser will not see another student's data.
+## Visibility of Saved Academic Data
+
+Locally saved calculator data is available to someone using the same browser profile on the same device. A different browser or device does not automatically receive that academic data.
 
 ## Clearing Data
 
-Users can clear app data with the in-app `Reset` button or by clearing site data in their browser.
+Users can clear calculator data with the in-app `Reset` action or by clearing site data in the browser.
 
 ## Backups
 
-Users can export their data as JSON and import it later.
+Users can export their calculator data as JSON and import it later. CSV exports and printable reports are also generated from the data available in the browser.
+
+## Important Note
+
+Students should avoid entering information they do not want stored in the browser profile they are using, especially on shared devices.
