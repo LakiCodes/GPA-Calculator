@@ -157,9 +157,6 @@ export const studentDataSchema = z.object({
   orphanedRecords: z.record(z.string(), courseRecordSchema),
   plannerScenarios: z.array(plannerScenarioSchema),
   registrationInfo: z.object({
-    firstAcademicYear: z.string().optional(),
-    currentOrCompletionAcademicYear: z.string().optional(),
-    approvedExtensionOrValidReason: z.boolean().optional(),
     lastAttemptProvision: z.boolean().optional()
   }),
   preferences: z.object({
