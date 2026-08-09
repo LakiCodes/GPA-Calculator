@@ -1,4 +1,5 @@
 import type {
+  ClassName,
   Course,
   CourseRecord,
   CurriculumSelection,
@@ -18,11 +19,62 @@ import { elapsedAcademicYears } from "./graduation";
 import { effectiveResultMap } from "./records";
 import { isLetterGrade } from "../data/gradeScale";
 
-export type ClassName =
-  | "First Class"
-  | "Second Class (Upper Division)"
-  | "Second Class (Lower Division)"
-  | "Pass";
+export interface ClassRuleDefinition {
+  className: ClassName;
+  gpa: number;
+  highGrade: LetterGrade | null;
+  highGradeShare: number;
+  poorLimit: number;
+  allowBelowC: boolean;
+}
+
+export const CLASS_RULES: readonly ClassRuleDefinition[] = [
+  {
+    className: "First Class",
+    gpa: 3.7,
+    highGrade: "A",
+    highGradeShare: 0.5,
+    poorLimit: 0,
+    allowBelowC: false
+  },
+  {
+    className: "Second Class (Upper Division)",
+    gpa: 3.3,
+    highGrade: "A-",
+    highGradeShare: 0.5,
+    poorLimit: 2,
+    allowBelowC: true
+  },
+  {
+    className: "Second Class (Lower Division)",
+    gpa: 3,
+    highGrade: "B+",
+    highGradeShare: 0.5,
+    poorLimit: 2,
+    allowBelowC: true
+  },
+  {
+    className: "Pass",
+    gpa: 2,
+    highGrade: null,
+    highGradeShare: 0,
+    poorLimit: Number.POSITIVE_INFINITY,
+    allowBelowC: true
+  }
+] as const;
+
+export const classRuleFor = (className: ClassName): ClassRuleDefinition =>
+  CLASS_RULES.find((rule) => rule.className === className)!;
+
+export const requiredHighGradeCreditsFor = (
+  evaluatedCredits: number,
+  className: ClassName
+): number => {
+  const rule = classRuleFor(className);
+  return rule.highGrade === null
+    ? 0
+    : Math.ceil(evaluatedCredits * rule.highGradeShare);
+};
 
 export interface ClassRuleResult {
   className: ClassName;
@@ -46,38 +98,6 @@ export interface ClassificationEvaluation {
   basis: "current";
 }
 
-const classRules: Array<{
-  className: Exclude<ClassName, "Pass">;
-  gpa: number;
-  highGrade: LetterGrade;
-  poorLimit: number;
-  allowBelowC: boolean;
-}> = [
-  {
-    className: "First Class",
-    gpa: 3.7,
-    highGrade: "A",
-    poorLimit: 0,
-    allowBelowC: false
-  },
-  {
-    className: "Second Class (Upper Division)",
-    gpa: 3.3,
-    highGrade: "A-",
-    poorLimit: 2,
-    allowBelowC: true
-  },
-  {
-    className: "Second Class (Lower Division)",
-    gpa: 3,
-    highGrade: "B+",
-    poorLimit: 2,
-    allowBelowC: true
-  }
-];
-
-const halfCredits = (credits: number): number => Math.ceil(credits / 2);
-
 export const evaluateClassification = (
   programme: Programme,
   selection: CurriculumSelection | undefined,
@@ -89,7 +109,6 @@ export const evaluateClassification = (
   const currentGpa = calculateCourseGpa(courses, results);
   const currentGpaValue = currentGpa.gpa === null ? null : Number(currentGpa.gpa);
   const evaluatedCredits = currentGpa.gradedCredits;
-  const requiredHighGradeCredits = halfCredits(evaluatedCredits);
   const duration = elapsedAcademicYears(
     registrationInfo.firstAcademicYear,
     registrationInfo.currentOrCompletionAcademicYear
@@ -115,31 +134,48 @@ export const evaluateClassification = (
   );
   const poorGradeCredits = poorCourses.reduce((sum, course) => sum + course.credits, 0);
 
-  const resultsByClass = classRules.map((rule): ClassRuleResult => {
+  const resultsByClass = CLASS_RULES.map((rule): ClassRuleResult => {
     const reasons: string[] = [];
-    const highGradeCredits = courses
-      .filter((course): course is Course => {
-        const result = results[course.id] ?? "";
-        return isLetterGrade(result) && gradeMeets(result, rule.highGrade);
-      })
-      .reduce((sum, course) => sum + course.credits, 0);
+    const requiredHighGradeCredits = requiredHighGradeCreditsFor(
+      evaluatedCredits,
+      rule.className
+    );
+    const highGradeCredits = rule.highGrade === null
+      ? 0
+      : courses
+          .filter((course): course is Course => {
+            const result = results[course.id] ?? "";
+            return isLetterGrade(result) && gradeMeets(result, rule.highGrade!);
+          })
+          .reduce((sum, course) => sum + course.credits, 0);
 
     if (currentGpaValue === null) {
-      reasons.push("Enter at least one GPA-bearing result to evaluate current standing.");
+      reasons.push(
+        rule.className === "Pass"
+          ? "Enter at least one GPA-bearing result to evaluate current pass standing."
+          : "Enter at least one GPA-bearing result to evaluate current standing."
+      );
     } else if (currentGpaValue < rule.gpa) {
       reasons.push(`Current GPA must be at least ${rule.gpa.toFixed(2)}.`);
     }
-    if (highGradeCredits < requiredHighGradeCredits) {
+
+    if (
+      rule.highGrade !== null &&
+      highGradeCredits < requiredHighGradeCredits
+    ) {
       reasons.push(
         `${requiredHighGradeCredits} of the currently graded credits must be ${rule.highGrade} or better; current count is ${highGradeCredits}.`
       );
     }
+
     if (!rule.allowBelowC && belowCCourses.length > 0) {
       reasons.push("First Class current standing requires no entered grade below C.");
     }
+
     if (rule.allowBelowC && poorCourses.length > rule.poorLimit) {
       reasons.push(`No more than ${rule.poorLimit} entered C-/D+ grades are allowed.`);
     }
+
     if (mandatoryRepeatCourses.length > 0) {
       reasons.push("Current results include D/E/AB mandatory repeat grades.");
     }
@@ -156,34 +192,12 @@ export const evaluateClassification = (
     };
   });
 
-  const passReasons: string[] = [];
-  if (currentGpaValue === null) {
-    passReasons.push("Enter at least one GPA-bearing result to evaluate current pass standing.");
-  } else if (currentGpaValue < 2) {
-    passReasons.push("Current GPA must be at least 2.00.");
-  }
-  if (mandatoryRepeatCourses.length > 0) {
-    passReasons.push("Current results include D/E/AB mandatory repeat grades.");
-  }
-
-  const awardedClass = resultsByClass.find((result) => result.eligible)?.className ??
-    (passReasons.length === 0 ? "Pass" : "Not yet eligible");
+  const awardedClass =
+    resultsByClass.find((result) => result.eligible)?.className ?? "Not yet eligible";
 
   return {
     awardedClass,
-    results: [
-      ...resultsByClass,
-      {
-        className: "Pass",
-        eligible: passReasons.length === 0,
-        reasons: passReasons,
-        highGradeCredits: 0,
-        requiredHighGradeCredits,
-        evaluatedCredits,
-        poorGradeCredits,
-        poorGradeCourseCount: poorCourses.length
-      }
-    ],
+    results: resultsByClass,
     currentGpa: currentGpa.gpa,
     evaluatedCredits: gpaBearingCourses.reduce((sum, course) => sum + course.credits, 0),
     durationYears: duration,
