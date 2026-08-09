@@ -95,8 +95,15 @@ export const classTargetForPresetGpa = (gpa: number): ClassName | undefined =>
 const resolveClassTarget = (
   scenario: PlannerScenario,
   options?: PlannerOptions
-): ClassName | null =>
-  options?.classTarget ?? scenario.classTarget ?? classTargetForPresetGpa(scenario.targetGpa) ?? null;
+): ClassName | null => {
+  if (options?.classTarget) {
+    return options.classTarget;
+  }
+  if (scenario.classTarget === null) {
+    return null;
+  }
+  return scenario.classTarget ?? classTargetForPresetGpa(scenario.targetGpa) ?? null;
+};
 
 const gradeForAverage = (required: number): string => {
   if (required <= 0) {
