@@ -147,9 +147,6 @@ export interface PlannerScenario {
 }
 
 export interface RegistrationInfo {
-  firstAcademicYear?: string;
-  currentOrCompletionAcademicYear?: string;
-  approvedExtensionOrValidReason?: boolean;
   lastAttemptProvision?: boolean;
 }
 
