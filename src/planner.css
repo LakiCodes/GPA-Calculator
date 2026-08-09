@@ -1,0 +1,346 @@
+.class-planner {
+  --planner-accent: var(--accent);
+}
+
+.class-planner-toolbar .control {
+  min-width: min(360px, 100%);
+  flex: 1 1 320px;
+}
+
+.class-planner-metrics {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 1.2fr 1fr;
+  gap: 12px;
+}
+
+.class-primary-metric,
+.class-target-metric,
+.class-plan-metric {
+  min-height: 150px;
+}
+
+.class-primary-metric strong,
+.class-target-metric strong,
+.class-plan-metric strong {
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1.12;
+}
+
+.class-target-metric {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
+}
+
+.class-target-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.scenario-name-control {
+  min-width: 220px;
+}
+
+.class-target-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.class-target-card {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-height: 122px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.class-target-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.class-target-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 2px;
+}
+
+.class-target-card.active {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+  background: var(--accent-soft);
+}
+
+.class-target-card span {
+  font-weight: 900;
+}
+
+.class-target-card strong {
+  color: var(--accent);
+  font-size: 1.35rem;
+}
+
+.class-target-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.planner-gpa-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.planner-gpa-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.planner-gpa-facts > div {
+  display: grid;
+  gap: 3px;
+  min-height: 64px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.planner-gpa-facts span {
+  color: var(--muted);
+  font-size: 0.73rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.planner-gpa-facts strong {
+  font-size: 1rem;
+}
+
+.class-requirements-panel {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+
+.class-requirement-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.requirement-card {
+  display: grid;
+  gap: 5px;
+  min-height: 118px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.requirement-card > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.requirement-card strong {
+  font-size: 1.15rem;
+}
+
+.requirement-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.class-blockers {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+  color: var(--danger);
+}
+
+.class-blockers > div {
+  display: grid;
+  gap: 5px;
+}
+
+.class-blockers ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.class-blockers li {
+  margin: 3px 0;
+}
+
+.class-plan-panel .planner-summary {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.class-valid-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent) !important;
+  font-size: 0.78rem !important;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.class-planner .planner-plan-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.class-planner .plan-card {
+  min-height: 168px;
+  align-content: start;
+}
+
+.class-planner .plan-class {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.plan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.plan-meta span {
+  display: inline-flex;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--accent) !important;
+  font-size: 0.73rem;
+  font-weight: 900;
+}
+
+.plan-card.active .plan-meta span {
+  background: color-mix(in srgb, var(--surface) 60%, var(--accent-soft));
+}
+
+.planner-empty-state {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed color-mix(in srgb, var(--danger) 40%, var(--line));
+  border-radius: 7px;
+  color: var(--danger);
+}
+
+.planner-empty-state > div {
+  display: grid;
+  gap: 4px;
+}
+
+.planner-empty-state span {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.planner-course-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+}
+
+.planner-course-heading > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.planner-course-heading > div:first-child > div {
+  display: grid;
+  gap: 2px;
+}
+
+.planner-course-heading span:not(.pill) {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.planner-grade-row {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 58%, var(--line));
+}
+
+@media (max-width: 1260px) {
+  .class-planner-metrics,
+  .class-requirement-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .class-target-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .planner-gpa-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .class-target-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .planner-gpa-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .class-planner .planner-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .class-planner-metrics,
+  .class-requirement-grid,
+  .class-target-grid,
+  .planner-gpa-facts,
+  .class-planner .planner-plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-course-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .scenario-name-control {
+    min-width: 0;
+    width: 100%;
+  }
+}
