@@ -170,29 +170,23 @@ describe("progress, graduation, class, planner, and storage", () => {
     expect(repeatGraduation.yearProgress[0].status).toBe("Contains mandatory repeat grades");
   });
 
-  it("requires completed credits, overall GPA, annual passes, no unresolved courses, and seven-year compliance for graduation", () => {
+  it("assumes four-year completion and therefore treats the seven-year maximum as met", () => {
     const graduation = evaluateGraduation(
       programme,
       selection,
       recordsWith("A"),
       {
-        firstAcademicYear: "2026/2027",
+        firstAcademicYear: "2022/2023",
         currentOrCompletionAcademicYear: "2029/2030"
       }
     );
-    expect(graduation.canGraduateProvisionally).toBe(true);
 
-    const tooLate = evaluateGraduation(
-      programme,
-      selection,
-      recordsWith("A"),
-      {
-        firstAcademicYear: "2026/2027",
-        currentOrCompletionAcademicYear: "2034/2035"
-      }
+    expect(graduation.elapsedAcademicYears).toBe(4);
+    expect(graduation.sevenYearStatus).toBe("met");
+    expect(graduation.checklist.find((item) => item.id === "seven-years")?.detail).toContain(
+      "assumes degree completion within four academic years"
     );
-    expect(tooLate.sevenYearStatus).toBe("not-met");
-    expect(tooLate.canGraduateProvisionally).toBe(false);
+    expect(graduation.canGraduateProvisionally).toBe(true);
   });
 
   it("keeps last-attempt provision separate from graduation approval", () => {
@@ -208,17 +202,19 @@ describe("progress, graduation, class, planner, and storage", () => {
     expect(graduation.disclaimer).toContain("University");
   });
 
-  it("awards First Class only when GPA, A-credit, no-below-C, duration, and completion rules are met", () => {
+  it("awards First Class when GPA, A-credit, no-below-C, and completion rules are met under the four-year assumption", () => {
     const classification = evaluateClassification(
       programme,
       selection,
       recordsWith("A"),
       {
-        firstAcademicYear: "2026/2027",
+        firstAcademicYear: "2022/2023",
         currentOrCompletionAcademicYear: "2029/2030"
       }
     );
     expect(classification.awardedClass).toBe("First Class");
+    expect(classification.durationYears).toBe(4);
+    expect(classification.withinFourYearsOrValidReason).toBe(true);
   });
 
   it("blocks First Class when a grade is below C and checks upper/lower poor-pass limits", () => {
@@ -230,38 +226,27 @@ describe("progress, graduation, class, planner, and storage", () => {
       programme,
       selection,
       withPoor,
-      {
-        firstAcademicYear: "2026/2027",
-        currentOrCompletionAcademicYear: "2029/2030"
-      }
+      {}
     );
     expect(classification.results.find((item) => item.className === "First Class")?.eligible).toBe(false);
     expect(classification.results.find((item) => item.className === "Second Class (Upper Division)")?.eligible).toBe(false);
   });
 
-  it("does not use completion duration to block current class standing", () => {
-    const withoutReason = evaluateClassification(
+  it("ignores stored academic-year values because four-year completion is assumed", () => {
+    const classification = evaluateClassification(
       programme,
       selection,
       recordsWith("A"),
       {
-        firstAcademicYear: "2026/2027",
-        currentOrCompletionAcademicYear: "2030/2031"
+        firstAcademicYear: "2022/2023",
+        currentOrCompletionAcademicYear: "2029/2030",
+        approvedExtensionOrValidReason: false
       }
     );
-    expect(withoutReason.awardedClass).toBe("First Class");
 
-    const withReason = evaluateClassification(
-      programme,
-      selection,
-      recordsWith("A"),
-      {
-        firstAcademicYear: "2026/2027",
-        currentOrCompletionAcademicYear: "2030/2031",
-        approvedExtensionOrValidReason: true
-      }
-    );
-    expect(withReason.awardedClass).toBe("First Class");
+    expect(classification.awardedClass).toBe("First Class");
+    expect(classification.durationYears).toBe(4);
+    expect(classification.withinFourYearsOrValidReason).toBe(true);
   });
 
   it("evaluates current class standing from completed results so far instead of all four years", () => {
