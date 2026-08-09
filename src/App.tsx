@@ -93,6 +93,16 @@ const attemptTypes: Array<{ value: AttemptType; label: string }> = [
 ];
 
 const resultOptions = RESULT_CODES as readonly GradeEntry[];
+const ACADEMIC_YEAR_OPTIONS = [
+  "2022/2023",
+  "2023/2024",
+  "2024/2025",
+  "2025/2026",
+  "2026/2027",
+  "2027/2028",
+  "2028/2029",
+  "2029/2030"
+] as const;
 
 const selectCoursesForGroup = (group: ElectiveGroup, pathwayId?: string): string[] => {
   const available = group.availableCourses.filter((course) =>
@@ -950,12 +960,10 @@ const ProgrammeControls = ({
         </div>
         <div className="form-grid">
           <label>
-            <span className="field-label">First academic year</span>
-            <input
+            <span className="field-label">Start year</span>
+            <select
               className="control"
-              type="text"
-              inputMode="numeric"
-              placeholder="2022/2023"
+              aria-label="First academic year"
               value={registrationInfo.firstAcademicYear ?? ""}
               onChange={(event) => {
                 const value = event.target.value;
@@ -964,15 +972,20 @@ const ProgrammeControls = ({
                   firstAcademicYear: value || undefined
                 }));
               }}
-            />
+            >
+              <option value="">Select year</option>
+              {ACADEMIC_YEAR_OPTIONS.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
-            <span className="field-label">Current / completion year</span>
-            <input
+            <span className="field-label">End / current year</span>
+            <select
               className="control"
-              type="text"
-              inputMode="numeric"
-              placeholder="2025/2026"
+              aria-label="Current or completion academic year"
               value={registrationInfo.currentOrCompletionAcademicYear ?? ""}
               onChange={(event) => {
                 const value = event.target.value;
@@ -981,7 +994,14 @@ const ProgrammeControls = ({
                   currentOrCompletionAcademicYear: value || undefined
                 }));
               }}
-            />
+            >
+              <option value="">Select year</option>
+              {ACADEMIC_YEAR_OPTIONS.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         <label className="inline-check">
@@ -998,7 +1018,7 @@ const ProgrammeControls = ({
           Approved extension or valid reason
         </label>
         <p className="fine-print">
-          Used to verify the four-year degree-class rule. Example: 2022/2023 to 2025/2026.
+          Used to verify the four-year degree-class rule. Choose academic years from 2022/2023 to 2029/2030.
         </p>
       </div>
 
