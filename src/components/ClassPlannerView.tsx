@@ -90,7 +90,6 @@ export const ClassPlannerView = ({
   const targetRule = targetClass ? DEGREE_CLASS_RULES[targetClass] : null;
   const activeEvaluation = activePlan?.classEvaluation ?? projection.classTargetEvaluation;
   const selectedClass = activePlan?.projectedClass ?? projection.selectedPlanClass;
-  const selectedClassBasis = activePlan?.projectedClassBasis ?? projection.selectedPlanClassBasis;
   const classTargetMet = activePlan?.classTargetMet ?? projection.classTargetPossible;
 
   const highGradeDetail = activeEvaluation && targetRule?.highGradeLabel
@@ -141,7 +140,7 @@ export const ClassPlannerView = ({
           <strong>{targetClass ? shortClass(targetClass) : `GPA ${projection.targetGpa.toFixed(2)}`}</strong>
           <small>
             {targetRule
-              ? `GPA ≥ ${targetRule.minGpa.toFixed(2)}${targetRule.highGradeLabel ? ` • 50% credits ${targetRule.highGradeLabel}` : ""}`
+              ? `GPA ≥ ${targetRule.minGpa.toFixed(2)}${targetRule.highGradeLabel ? ` • 50% credits ${targetRule.highGradeLabel}` : ""}${targetRule.requiresFourYearCompletion ? " • assumes completion within 4 years" : ""}`
               : projection.requiredAverageLabel}
           </small>
         </article>
@@ -149,19 +148,13 @@ export const ClassPlannerView = ({
         <article className={clsx("planner-hero-card", classTargetMet === false && "danger") }>
           <span className="planner-hero-label">Selected plan outcome</span>
           <strong>{shortClass(selectedClass)}</strong>
-          <small>
-            GPA {formatGpa(activePlan?.gpa ?? projection.recommendedGpa)}
-            {selectedClassBasis === "on-track" ? " • duration verification pending" : ""}
-          </small>
+          <small>GPA {formatGpa(activePlan?.gpa ?? projection.recommendedGpa)}</small>
         </article>
 
         <article className="planner-hero-card">
           <span className="planner-hero-label">Best still possible</span>
           <strong>{shortClass(projection.bestPossibleClass)}</strong>
-          <small>
-            All-A ceiling GPA {formatGpa(projection.maxPossibleGpa)}
-            {projection.bestPossibleClassBasis === "on-track" ? " • duration pending" : ""}
-          </small>
+          <small>All-A ceiling GPA {formatGpa(projection.maxPossibleGpa)}</small>
         </article>
       </section>
 
@@ -169,7 +162,7 @@ export const ClassPlannerView = ({
         <div className="panel-heading planner-target-heading">
           <div>
             <span>Choose a degree-class target</span>
-            <small>Class mode plans against every encoded class rule, not GPA alone.</small>
+            <small>Class mode plans against every encoded academic class rule. Four-year completion is assumed.</small>
           </div>
           <input
             className="control"
@@ -247,7 +240,7 @@ export const ClassPlannerView = ({
             <div>
               <span>{shortClass(targetClass)} requirement check</span>
               <small>
-                The selected grade plan is tested against the final programme-credit rules.
+                The selected grade plan is tested against the final programme-credit rules; four-year completion is treated as an explicit planning assumption.
               </small>
             </div>
             <span
@@ -274,7 +267,7 @@ export const ClassPlannerView = ({
             ))}
           </div>
           <p className="fine-print planner-disclaimer">
-            Class projections are planning guidance based on the encoded Prospectus rules. Final class determination remains with the University.
+            Planning assumption: the degree is completed within four academic years. Class projections are guidance based on the encoded Prospectus rules; final class determination remains with the University.
           </p>
         </section>
       )}
@@ -301,10 +294,7 @@ export const ClassPlannerView = ({
                 >
                   <span className="plan-rank">Plan {index + 1}</span>
                   <strong>{plan.name}</strong>
-                  <span className="plan-class-outcome">
-                    {shortClass(plan.projectedClass)}
-                    {plan.projectedClassBasis === "on-track" ? " • on track" : ""}
-                  </span>
+                  <span className="plan-class-outcome">{shortClass(plan.projectedClass)}</span>
                   <small>Projected GPA {formatGpa(plan.gpa)}</small>
                   {evaluation?.rule.highGradeLabel && (
                     <small>
