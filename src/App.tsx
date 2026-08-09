@@ -20,6 +20,7 @@ import {
 import clsx from "clsx";
 import { Analytics } from "@vercel/analytics/react";
 
+import { ClassPlannerView } from "./components/ClassPlannerView";
 import { evaluateClassification } from "./calculations/classification";
 import {
   expectedSemesterCredits,
@@ -276,8 +277,12 @@ const makeCsv = (report: ReportData): string => {
 
   add("Current GPA Planner Scenario");
   add("Scenario", report.scenario.name);
-  add("Target GPA", report.scenario.targetGpa.toFixed(2));
+  add("Target class", report.projection.targetClass ?? "GPA only");
+  add("Target GPA", report.projection.targetGpa.toFixed(2));
   add("Current GPA in planner", report.projection.currentGpa.gpa);
+  add("Current class standing", report.projection.currentClass);
+  add("Selected plan class", report.projection.selectedPlanClass);
+  add("Best possible class", report.projection.bestPossibleClass);
   add("Suggested final GPA", report.projection.recommendedGpa);
   add("Possible GPA range", `${formatGpa(report.projection.minPossibleGpa)} - ${formatGpa(report.projection.maxPossibleGpa)}`);
   add("Remaining GPA credits", report.projection.remainingGpaCredits);
@@ -286,9 +291,9 @@ const makeCsv = (report: ReportData): string => {
   blank();
 
   add("Future Grade Plans");
-  add("Plan", "Final GPA", "Description");
+  add("Plan", "Projected class", "Final GPA", "Description");
   report.projection.possiblePlans.forEach((plan) => {
-    add(plan.name, plan.gpa, plan.description);
+    add(plan.name, plan.projectedClass, plan.gpa, plan.description);
   });
   blank();
 
@@ -513,8 +518,25 @@ function App() {
     data.plannerScenarios[0] ??
     defaultScenario(3.3);
   const projection = useMemo(
-    () => calculatePlannerProjection(selectedCourses, data.courseRecords, activeScenario),
-    [selectedCourses, data.courseRecords, activeScenario]
+    () =>
+      calculatePlannerProjection(
+        selectedCourses,
+        data.courseRecords,
+        activeScenario,
+        {
+          programme,
+          selection: activeSelection,
+          registrationInfo: data.registrationInfo
+        }
+      ),
+    [
+      selectedCourses,
+      data.courseRecords,
+      activeScenario,
+      programme,
+      activeSelection,
+      data.registrationInfo
+    ]
   );
   const filteredCourses = selectedCourses.filter((course) => {
     const matchesYear = yearFilter === "all" || course.year === yearFilter;
@@ -801,7 +823,7 @@ function App() {
           )}
 
           {activeTab === "planner" && (
-            <PlannerView
+            <ClassPlannerView
               courses={selectedCourses}
               scenario={activeScenario}
               scenarios={data.plannerScenarios}
@@ -1385,190 +1407,6 @@ const AttemptEditor = ({
   </div>
 );
 
-const PlannerView = ({
-  courses,
-  scenario,
-  scenarios,
-  projection,
-  records,
-  onActiveScenarioChange,
-  onScenarioChange,
-  onAddScenario,
-  onDeleteScenario
-}: {
-  courses: Course[];
-  scenario: PlannerScenario;
-  scenarios: PlannerScenario[];
-  projection: ReturnType<typeof calculatePlannerProjection>;
-  records: Record<string, CourseRecord>;
-  onActiveScenarioChange: (scenarioId: string) => void;
-  onScenarioChange: (scenarioId: string, updater: (scenario: PlannerScenario) => PlannerScenario) => void;
-  onAddScenario: () => void;
-  onDeleteScenario: (scenarioId: string) => void;
-}) => {
-  const targetPresets = [
-    { label: "Pass", value: 2 },
-    { label: "Second Lower", value: 3 },
-    { label: "Second Upper", value: 3.3 },
-    { label: "First Class", value: 3.7 }
-  ];
-  const effectiveResults = effectiveResultMap(courses, records);
-  const remainingCourses = courses.filter((course) => projection.remainingCourseIds.includes(course.id));
-  const plans = projection.possiblePlans;
-  const [activePlanId, setActivePlanId] = useState("");
-  useEffect(() => {
-    if (!plans.some((plan) => plan.id === activePlanId)) {
-      setActivePlanId(plans[0]?.id ?? "");
-    }
-  }, [activePlanId, plans]);
-  const activePlan = plans.find((plan) => plan.id === activePlanId) ?? plans[0];
-  const activeGrades = activePlan?.grades ?? projection.recommendedGrades;
-  const suggestedCount = Object.keys(activeGrades).length;
-
-  return (
-    <div className="view-stack">
-      <section className="panel toolbar">
-        <select
-          className="control"
-          value={scenario.id}
-          onChange={(event) => onActiveScenarioChange(event.target.value)}
-        >
-          {scenarios.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="secondary-button" onClick={onAddScenario}>
-          <Plus aria-hidden="true" size={16} /> Scenario
-        </button>
-        {scenarios.length > 1 && (
-          <button type="button" className="icon-button danger" onClick={() => onDeleteScenario(scenario.id)} title="Delete scenario">
-            <Trash2 aria-hidden="true" size={16} />
-          </button>
-        )}
-      </section>
-
-      <section className="metric-grid">
-        <div className="metric">
-          <span>Current GPA</span>
-          <strong>{formatGpa(projection.currentGpa.gpa)}</strong>
-          <small>{projection.gradedCredits} graded credits</small>
-        </div>
-        <div className="metric">
-          <span>Selected Plan GPA</span>
-          <strong>{formatGpa(activePlan?.gpa ?? projection.recommendedGpa)}</strong>
-          <small>{plans.length} possible plans</small>
-        </div>
-        <div className={clsx("metric", projection.impossible && "danger-metric")}>
-          <span>Target</span>
-          <strong>{projection.targetGpa.toFixed(2)}</strong>
-          <small>{projection.requiredAverageLabel}</small>
-        </div>
-        <div className="metric">
-          <span>Possible range</span>
-          <strong>{formatGpa(projection.minPossibleGpa)} - {formatGpa(projection.maxPossibleGpa)}</strong>
-          <small>{projection.remainingGpaCredits} remaining GPA credits</small>
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-heading">
-          <span>Scenario Target</span>
-          <input
-            className="control"
-            value={scenario.name}
-            onChange={(event) =>
-              onScenarioChange(scenario.id, (current) => ({ ...current, name: event.target.value || "Scenario" }))
-            }
-          />
-        </div>
-        <div className="segmented">
-          {targetPresets.map((target) => (
-            <button
-              type="button"
-              key={target.label}
-              className={clsx(scenario.targetGpa === target.value && "active")}
-              onClick={() => onScenarioChange(scenario.id, (current) => ({ ...current, targetGpa: target.value }))}
-              title={`${target.value.toFixed(2)} target GPA`}
-            >
-              <span>{target.label}</span>
-              <small>{target.value.toFixed(2)}</small>
-            </button>
-          ))}
-          <input
-            className="control compact-control"
-            type="number"
-            min={0}
-            max={4}
-            step={0.01}
-            value={scenario.targetGpa}
-            onChange={(event) =>
-              onScenarioChange(scenario.id, (current) => ({
-                ...current,
-                targetGpa: Math.max(0, Math.min(4, Number(event.target.value) || 0))
-              }))
-            }
-          />
-        </div>
-        <div className="planner-summary">
-          <div>
-            <strong>Future grade plans</strong>
-            <span>{projection.recommendationSummary}</span>
-          </div>
-        </div>
-        {plans.length > 0 && (
-          <div className="planner-plan-grid" aria-label="Possible future grade plans">
-            {plans.map((plan, index) => (
-              <button
-                type="button"
-                key={plan.id}
-                className={clsx("plan-card", activePlan?.id === plan.id && "active")}
-                onClick={() => setActivePlanId(plan.id)}
-              >
-                <strong>{index + 1}. {plan.name}</strong>
-                <span>Final GPA {formatGpa(plan.gpa)}</span>
-                <small>{plan.description}</small>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="results-list">
-        {remainingCourses.length === 0 ? (
-          <div className="panel">
-            <p className="empty-state">No remaining GPA-bearing courses in this scenario.</p>
-          </div>
-        ) : (
-          remainingCourses.map((course) => (
-            <article className="course-row compact-row" key={course.id}>
-              <div>
-                <strong>{course.code}</strong>
-                <span>{course.title}</span>
-                <small>{course.credits} credits - current {effectiveResults[course.id] || "missing"}</small>
-              </div>
-              <div className="planner-course-actions">
-                <span className={clsx("suggest-chip", projection.impossible && "muted")}>
-                  Aim {activeGrades[course.id] ?? "A"}
-                </span>
-              </div>
-            </article>
-          ))
-        )}
-        {projection.impossible && (
-          <div className="alert danger-alert">
-            <AlertTriangle aria-hidden="true" size={16} />
-            <span>
-              {projection.targetGpa.toFixed(2)} is outside the possible range for the remaining courses.
-            </span>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-};
-
 const ProgressView = ({
   graduation,
   classification,
@@ -1716,7 +1554,9 @@ const RulesView = () => (
           <li>D, E, and AB require a repeat. C- and D+ may be repeated.</li>
           <li>Ordinary repeat grades are capped at C; privileged medical/deferred attempts are not capped.</li>
           <li>GPA is weighted by credits and truncated to two decimals.</li>
-          <li>Class credit thresholds count credits, not courses.</li>
+          <li>First Class needs 3.70+, A/A+ across at least half of total programme credits, no grade below C, and the four-year rule.</li>
+          <li>Second Upper needs 3.30+, A- or better across at least half of total programme credits, no more than two C-/D+ grades, and the four-year rule.</li>
+          <li>Second Lower needs 3.00+, B+ or better across at least half of total programme credits, no more than two C-/D+ grades, and the four-year rule.</li>
           <li>Final class and graduation determinations remain with the University.</li>
         </ul>
       </div>
@@ -1764,19 +1604,22 @@ const PrintReport = memo(({ report }: { report: ReportData }) => {
       </section>
 
       <section className="print-section">
-        <h2>Current GPA Planner Scenario</h2>
+        <h2>Current Planner Scenario</h2>
         <dl className="print-key-grid">
           <div><dt>Scenario</dt><dd>{report.scenario.name}</dd></div>
-          <div><dt>Target GPA</dt><dd>{report.scenario.targetGpa.toFixed(2)}</dd></div>
+          <div><dt>Target class</dt><dd>{report.projection.targetClass ?? "GPA only"}</dd></div>
+          <div><dt>Target GPA</dt><dd>{report.projection.targetGpa.toFixed(2)}</dd></div>
+          <div><dt>Selected plan class</dt><dd>{report.projection.selectedPlanClass ?? "--"}</dd></div>
+          <div><dt>Best possible class</dt><dd>{report.projection.bestPossibleClass}</dd></div>
           <div><dt>Suggested final GPA</dt><dd>{formatGpa(report.projection.recommendedGpa)}</dd></div>
-          <div><dt>Possible range</dt><dd>{formatGpa(report.projection.minPossibleGpa)} - {formatGpa(report.projection.maxPossibleGpa)}</dd></div>
+          <div><dt>Possible GPA range</dt><dd>{formatGpa(report.projection.minPossibleGpa)} - {formatGpa(report.projection.maxPossibleGpa)}</dd></div>
           <div><dt>Remaining GPA credits</dt><dd>{report.projection.remainingGpaCredits}</dd></div>
           <div><dt>Required average</dt><dd>{report.projection.requiredAverageLabel}</dd></div>
         </dl>
         <p>{report.projection.recommendationSummary}</p>
         {selectedPlan && (
           <p>
-            Selected report plan: {selectedPlan.name} with final GPA {formatGpa(selectedPlan.gpa)}.
+            Selected report plan: {selectedPlan.name}; projected class {selectedPlan.projectedClass}; final GPA {formatGpa(selectedPlan.gpa)}.
           </p>
         )}
       </section>

@@ -1,0 +1,315 @@
+.class-planner {
+  --planner-card-min: 154px;
+}
+
+.planner-toolbar .control {
+  flex: 1 1 280px;
+}
+
+.planner-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.planner-hero-card {
+  display: grid;
+  align-content: space-between;
+  gap: 9px;
+  min-height: var(--planner-card-min);
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.planner-hero-card.primary {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
+}
+
+.planner-hero-card.danger {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+}
+
+.planner-hero-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.planner-hero-card strong {
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1.05;
+}
+
+.planner-hero-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.planner-target-heading > div,
+.class-requirements-panel .panel-heading > div,
+.planner-plans-panel .panel-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.planner-target-heading small,
+.class-requirements-panel .panel-heading small,
+.planner-plans-panel .panel-heading small {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.class-target-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.class-target-card {
+  display: grid;
+  gap: 5px;
+  min-height: 108px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+
+.class-target-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+
+.class-target-card.active {
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--line));
+  background: var(--accent-soft);
+}
+
+.class-target-card > span {
+  font-weight: 900;
+}
+
+.class-target-card > strong {
+  color: var(--accent);
+  font-size: 1.22rem;
+}
+
+.class-target-card > small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.planner-gpa-only-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.planner-gpa-only-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.planner-gpa-only-row > div span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.planner-gpa-only-row label {
+  display: grid;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.class-requirement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.class-requirement {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.class-requirement.met {
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--line));
+}
+
+.class-requirement.not-met {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+}
+
+.class-requirement.unknown {
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--line));
+}
+
+.class-requirement > div {
+  display: grid;
+  gap: 3px;
+}
+
+.class-requirement span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.planner-rule-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.planner-rule-icon.ok {
+  color: var(--ok);
+}
+
+.planner-rule-icon.warn {
+  color: var(--warn);
+}
+
+.planner-rule-icon.danger {
+  color: var(--danger);
+}
+
+.planner-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.planner-status-pill.ok {
+  border-color: color-mix(in srgb, var(--ok) 38%, var(--line));
+  background: color-mix(in srgb, var(--ok) 9%, var(--surface));
+  color: var(--ok);
+}
+
+.planner-status-pill.danger {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--danger);
+}
+
+.planner-status-pill.subtle {
+  color: var(--muted);
+}
+
+.planner-disclaimer {
+  margin-top: 12px;
+}
+
+.class-plan-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.class-plan-card {
+  min-height: 166px;
+  align-content: start;
+}
+
+.plan-rank {
+  color: var(--muted) !important;
+  font-size: 0.72rem;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+}
+
+.plan-class-outcome {
+  color: var(--accent) !important;
+  font-size: 0.9rem;
+  font-weight: 900 !important;
+}
+
+.planner-course-plan {
+  gap: 10px;
+}
+
+.planner-course-plan-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 2px 8px;
+}
+
+.planner-course-plan-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.planner-course-plan-heading > div > div {
+  display: grid;
+  gap: 2px;
+}
+
+.planner-course-plan-heading span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.planner-blocker-alert {
+  margin-top: 3px;
+}
+
+@media (max-width: 1120px) {
+  .planner-hero-grid,
+  .class-target-grid,
+  .class-requirement-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .class-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .planner-hero-grid,
+  .class-target-grid,
+  .class-requirement-grid,
+  .class-plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-gpa-only-row,
+  .planner-course-plan-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planner-gpa-only-row label,
+  .planner-gpa-only-row .compact-control {
+    width: 100%;
+  }
+}
