@@ -175,10 +175,7 @@ describe("progress, graduation, class, planner, and storage", () => {
       programme,
       selection,
       recordsWith("A"),
-      {
-        firstAcademicYear: "2022/2023",
-        currentOrCompletionAcademicYear: "2029/2030"
-      }
+      {}
     );
 
     expect(graduation.elapsedAcademicYears).toBe(4);
@@ -207,10 +204,7 @@ describe("progress, graduation, class, planner, and storage", () => {
       programme,
       selection,
       recordsWith("A"),
-      {
-        firstAcademicYear: "2022/2023",
-        currentOrCompletionAcademicYear: "2029/2030"
-      }
+      {}
     );
     expect(classification.awardedClass).toBe("First Class");
     expect(classification.durationYears).toBe(4);
@@ -232,16 +226,12 @@ describe("progress, graduation, class, planner, and storage", () => {
     expect(classification.results.find((item) => item.className === "Second Class (Upper Division)")?.eligible).toBe(false);
   });
 
-  it("ignores stored academic-year values because four-year completion is assumed", () => {
+  it("keeps the four-year completion assumption in current class standing", () => {
     const classification = evaluateClassification(
       programme,
       selection,
       recordsWith("A"),
-      {
-        firstAcademicYear: "2022/2023",
-        currentOrCompletionAcademicYear: "2029/2030",
-        approvedExtensionOrValidReason: false
-      }
+      {}
     );
 
     expect(classification.awardedClass).toBe("First Class");
