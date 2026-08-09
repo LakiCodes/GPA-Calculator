@@ -20,6 +20,13 @@ export const letterGradeSchema = z.enum([
   "E"
 ]);
 
+export const classNameSchema = z.enum([
+  "First Class",
+  "Second Class (Upper Division)",
+  "Second Class (Lower Division)",
+  "Pass"
+]);
+
 export const specialResultCodeSchema = z.enum([
   "AB",
   "MC",
@@ -138,7 +145,8 @@ export const plannerScenarioSchema = z.object({
   name: z.string().min(1),
   targetGpa: z.number().min(0).max(4),
   projectedGrades: z.record(z.string(), gradeEntrySchema),
-  updatedAt: z.string().min(1)
+  updatedAt: z.string().min(1),
+  classTarget: classNameSchema.optional()
 });
 
 export const studentDataSchema = z.object({
