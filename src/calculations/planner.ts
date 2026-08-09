@@ -1,18 +1,28 @@
-import { GRADE_POINTS_HUNDREDTHS } from "../data/gradeScale";
+import { GRADE_POINTS_HUNDREDTHS, isLetterGrade } from "../data/gradeScale";
 import { newId } from "../utils/id";
 import type {
+  ClassName,
   Course,
   CourseRecord,
+  CurriculumSelection,
   LetterGrade,
   PlannerScenario,
   Programme,
-  CurriculumSelection,
   RegistrationInfo
 } from "../domain/types";
 
-import { calculateCourseGpa, resultPointHundredths, truncateGpa } from "./gpa";
+import {
+  calculateCourseGpa,
+  gradeMeets,
+  resultPointHundredths,
+  truncateGpa
+} from "./gpa";
 import { effectiveResultMap } from "./records";
-import { evaluateClassification, type ClassName } from "./classification";
+import {
+  classRuleFor,
+  evaluateClassification,
+  requiredHighGradeCreditsFor
+} from "./classification";
 
 export interface PlannerProjection {
   currentGpa: ReturnType<typeof calculateCourseGpa>;
@@ -31,6 +41,15 @@ export interface PlannerProjection {
   recommendedGrades: Record<string, LetterGrade>;
   recommendationSummary: string;
   possiblePlans: FutureGradePlan[];
+  currentClass: ClassName | "Not yet eligible" | null;
+  targetClass: ClassName | null;
+  bestPossibleClass: ClassName | "Not yet eligible" | null;
+  classTargetPossible: boolean | null;
+  classTargetReasons: string[];
+  highGradeThreshold: LetterGrade | null;
+  currentHighGradeCredits: number;
+  requiredHighGradeCredits: number;
+  additionalHighGradeCreditsNeeded: number;
 }
 
 export interface FutureGradePlan {
@@ -39,6 +58,10 @@ export interface FutureGradePlan {
   description: string;
   grades: Record<string, LetterGrade>;
   gpa: string | null;
+  projectedClass: ClassName | "Not yet eligible" | null;
+  targetClassEligible: boolean | null;
+  highGradeCredits: number;
+  requiredHighGradeCredits: number;
 }
 
 const RECOMMENDATION_GRADES: Array<{
@@ -52,6 +75,13 @@ const RECOMMENDATION_GRADES: Array<{
   { grade: "B+", pointHundredths: GRADE_POINTS_HUNDREDTHS["B+"] },
   { grade: "A-", pointHundredths: GRADE_POINTS_HUNDREDTHS["A-"] },
   { grade: "A", pointHundredths: GRADE_POINTS_HUNDREDTHS.A }
+];
+
+const CLASS_ORDER: ClassName[] = [
+  "First Class",
+  "Second Class (Upper Division)",
+  "Second Class (Lower Division)",
+  "Pass"
 ];
 
 const gradeForAverage = (required: number): string => {
@@ -77,47 +107,145 @@ const gradeForAverage = (required: number): string => {
 const targetToHundredths = (targetGpa: number): number =>
   Math.ceil(targetGpa * 100 - 1e-9);
 
+const classTargetForDefaultGpa = (targetGpa: number): ClassName | undefined => {
+  if (Math.abs(targetGpa - 3.7) < 0.001) {
+    return "First Class";
+  }
+  if (Math.abs(targetGpa - 3.3) < 0.001) {
+    return "Second Class (Upper Division)";
+  }
+  if (Math.abs(targetGpa - 3) < 0.001) {
+    return "Second Class (Lower Division)";
+  }
+  if (Math.abs(targetGpa - 2) < 0.001) {
+    return "Pass";
+  }
+  return undefined;
+};
+
 type PlanItem = {
   course: Course;
   gradeIndex: number;
 };
 
+type PlannerOptions = {
+  programme?: Programme;
+  selection?: CurriculumSelection;
+  registrationInfo?: RegistrationInfo;
+  classTarget?: ClassName;
+};
+
+type PlanStrategy = {
+  id: string;
+  name: string;
+  description: string;
+  highGradeOrder: (items: PlanItem[]) => PlanItem[];
+  upgradeOrder: (items: PlanItem[]) => PlanItem[];
+  relaxOrder: (items: PlanItem[]) => PlanItem[];
+  bufferHundredths?: number;
+};
+
 const courseOrderValue = (course: Course): string =>
   `${course.year}${course.semester}${course.code}${course.id}`;
 
-const toPlan = (
-  id: string,
-  name: string,
-  description: string,
+const currentHighGradeCreditsFor = (
+  courses: Course[],
+  results: Record<string, string>,
+  threshold: LetterGrade | null
+): number => {
+  if (threshold === null) {
+    return 0;
+  }
+  return courses
+    .filter((course) => {
+      const result = results[course.id] ?? "";
+      return isLetterGrade(result) && gradeMeets(result, threshold);
+    })
+    .reduce((sum, course) => sum + course.credits, 0);
+};
+
+const highGradeCreditsInItems = (
   items: PlanItem[],
-  projectedWeighted: number,
-  totalCredits: number
-): FutureGradePlan => {
-  const grades = Object.fromEntries(
-    items.map((item) => [
-      item.course.id,
-      RECOMMENDATION_GRADES[item.gradeIndex].grade
-    ])
-  );
-  const planWeighted = items.reduce(
+  threshold: LetterGrade | null
+): number => {
+  if (threshold === null) {
+    return 0;
+  }
+  return items
+    .filter((item) =>
+      gradeMeets(RECOMMENDATION_GRADES[item.gradeIndex].grade, threshold)
+    )
+    .reduce((sum, item) => sum + item.course.credits, 0);
+};
+
+const weightedPointsForItems = (items: PlanItem[]): number =>
+  items.reduce(
     (sum, item) =>
       sum + item.course.credits * RECOMMENDATION_GRADES[item.gradeIndex].pointHundredths,
     0
   );
 
+const gradesFromItems = (items: PlanItem[]): Record<string, LetterGrade> =>
+  Object.fromEntries(
+    items.map((item) => [item.course.id, RECOMMENDATION_GRADES[item.gradeIndex].grade])
+  );
+
+const simulateRecords = (
+  records: Record<string, CourseRecord>,
+  remainingCourses: Course[],
+  grades: Record<string, LetterGrade>
+): Record<string, CourseRecord> => {
+  const simulated: Record<string, CourseRecord> = { ...records };
+  for (const course of remainingCourses) {
+    simulated[course.id] = {
+      courseId: course.id,
+      result: grades[course.id],
+      attempts: []
+    };
+  }
+  return simulated;
+};
+
+const evaluatePlan = (
+  plan: Omit<FutureGradePlan, "projectedClass" | "targetClassEligible" | "highGradeCredits" | "requiredHighGradeCredits">,
+  records: Record<string, CourseRecord>,
+  remainingCourses: Course[],
+  options: PlannerOptions | undefined,
+  targetClass: ClassName | null
+): FutureGradePlan => {
+  if (!options?.programme) {
+    return {
+      ...plan,
+      projectedClass: null,
+      targetClassEligible: null,
+      highGradeCredits: 0,
+      requiredHighGradeCredits: 0
+    };
+  }
+
+  const evaluation = evaluateClassification(
+    options.programme,
+    options.selection,
+    simulateRecords(records, remainingCourses, plan.grades),
+    options.registrationInfo ?? {}
+  );
+  const targetRule = targetClass
+    ? evaluation.results.find((result) => result.className === targetClass)
+    : null;
+
   return {
-    id,
-    name,
-    description,
-    grades,
-    gpa: truncateGpa(projectedWeighted + planWeighted, totalCredits)
+    ...plan,
+    projectedClass: evaluation.awardedClass,
+    targetClassEligible: targetRule?.eligible ?? null,
+    highGradeCredits: targetRule?.highGradeCredits ?? 0,
+    requiredHighGradeCredits: targetRule?.requiredHighGradeCredits ?? 0
   };
 };
 
 const planKey = (remainingCourses: Course[], plan: FutureGradePlan): string =>
   remainingCourses.map((course) => `${course.id}:${plan.grades[course.id]}`).join("|");
 
-const buildGreedyPlan = (
+const buildGpaGreedyPlan = (
   id: string,
   name: string,
   description: string,
@@ -125,34 +253,25 @@ const buildGreedyPlan = (
   projectedWeighted: number,
   projectedCredits: number,
   targetHundredths: number,
-  orderItems: (items: PlanItem[]) => PlanItem[]
+  orderItems: (items: PlanItem[]) => PlanItem[],
+  records: Record<string, CourseRecord>,
+  options?: PlannerOptions
 ): FutureGradePlan | null => {
-  const remainingCredits = remainingCourses.reduce(
-    (sum, course) => sum + course.credits,
-    0
-  );
+  const remainingCredits = remainingCourses.reduce((sum, course) => sum + course.credits, 0);
   const totalCredits = projectedCredits + remainingCredits;
   const targetWeighted = targetHundredths * totalCredits;
-  const maxWeighted =
-    projectedWeighted + remainingCredits * GRADE_POINTS_HUNDREDTHS.A;
+  const maxWeighted = projectedWeighted + remainingCredits * GRADE_POINTS_HUNDREDTHS.A;
 
   if (remainingCourses.length === 0 || remainingCredits === 0 || maxWeighted < targetWeighted) {
     return null;
   }
 
   const baselineIndex = RECOMMENDATION_GRADES.findIndex(
-    (option) =>
-      projectedWeighted + option.pointHundredths * remainingCredits >=
-      targetWeighted
+    (option) => projectedWeighted + option.pointHundredths * remainingCredits >= targetWeighted
   );
-  const startingIndex =
-    baselineIndex === -1 ? RECOMMENDATION_GRADES.length - 1 : baselineIndex;
-  const items = remainingCourses.map((course) => ({
-    course,
-    gradeIndex: startingIndex
-  }));
-  let planWeighted =
-    RECOMMENDATION_GRADES[startingIndex].pointHundredths * remainingCredits;
+  const startingIndex = baselineIndex === -1 ? RECOMMENDATION_GRADES.length - 1 : baselineIndex;
+  const items = remainingCourses.map((course) => ({ course, gradeIndex: startingIndex }));
+  let planWeighted = RECOMMENDATION_GRADES[startingIndex].pointHundredths * remainingCredits;
 
   for (const item of orderItems(items)) {
     while (item.gradeIndex > 0) {
@@ -167,163 +286,308 @@ const buildGreedyPlan = (
     }
   }
 
-  return toPlan(id, name, description, items, projectedWeighted, totalCredits);
+  const grades = gradesFromItems(items);
+  return evaluatePlan(
+    {
+      id,
+      name,
+      description,
+      grades,
+      gpa: truncateGpa(projectedWeighted + planWeighted, totalCredits)
+    },
+    records,
+    remainingCourses,
+    options,
+    null
+  );
 };
 
 const buildAllAPlan = (
   remainingCourses: Course[],
   projectedWeighted: number,
-  projectedCredits: number
+  projectedCredits: number,
+  records: Record<string, CourseRecord>,
+  options?: PlannerOptions,
+  targetClass: ClassName | null = null
 ): FutureGradePlan | null => {
-  const remainingCredits = remainingCourses.reduce(
-    (sum, course) => sum + course.credits,
-    0
+  const remainingCredits = remainingCourses.reduce((sum, course) => sum + course.credits, 0);
+  if (remainingCourses.length === 0 || remainingCredits === 0) {
+    return null;
+  }
+  const items = remainingCourses.map((course) => ({
+    course,
+    gradeIndex: RECOMMENDATION_GRADES.length - 1
+  }));
+  const totalCredits = projectedCredits + remainingCredits;
+  const grades = gradesFromItems(items);
+  return evaluatePlan(
+    {
+      id: "stretch",
+      name: "All A maximum",
+      description: "Best-case plan using A in every remaining GPA-bearing course.",
+      grades,
+      gpa: truncateGpa(
+        projectedWeighted + remainingCredits * GRADE_POINTS_HUNDREDTHS.A,
+        totalCredits
+      )
+    },
+    records,
+    remainingCourses,
+    options,
+    targetClass
   );
+};
+
+const buildClassPlan = (
+  strategy: PlanStrategy,
+  allCourses: Course[],
+  currentResults: Record<string, string>,
+  remainingCourses: Course[],
+  projectedWeighted: number,
+  projectedCredits: number,
+  targetGpaHundredths: number,
+  targetClass: ClassName,
+  records: Record<string, CourseRecord>,
+  options: PlannerOptions
+): FutureGradePlan | null => {
+  const rule = classRuleFor(targetClass);
+  const remainingCredits = remainingCourses.reduce((sum, course) => sum + course.credits, 0);
   if (remainingCourses.length === 0 || remainingCredits === 0) {
     return null;
   }
 
-  return toPlan(
-    "stretch",
-    "Stretch",
-    "A maximum-outcome plan using A in every future GPA-bearing course.",
-    remainingCourses.map((course) => ({
-      course,
-      gradeIndex: RECOMMENDATION_GRADES.length - 1
-    })),
-    projectedWeighted,
-    projectedCredits + remainingCredits
+  const totalCredits = projectedCredits + remainingCredits;
+  const classGpaHundredths = targetToHundredths(rule.gpa);
+  const baseTargetHundredths = Math.max(targetGpaHundredths, classGpaHundredths);
+  const requestedTargetHundredths = Math.min(
+    400,
+    baseTargetHundredths + (strategy.bufferHundredths ?? 0)
   );
+  const targetWeighted = requestedTargetHundredths * totalCredits;
+  const maxWeighted = projectedWeighted + remainingCredits * GRADE_POINTS_HUNDREDTHS.A;
+  if (maxWeighted < targetWeighted) {
+    return null;
+  }
+
+  const requiredHighGradeCredits = requiredHighGradeCreditsFor(totalCredits, targetClass);
+  const currentHighGradeCredits = currentHighGradeCreditsFor(
+    allCourses,
+    currentResults,
+    rule.highGrade
+  );
+  const futureHighGradeCreditsNeeded = Math.max(
+    0,
+    requiredHighGradeCredits - currentHighGradeCredits
+  );
+
+  if (futureHighGradeCreditsNeeded > remainingCredits) {
+    return null;
+  }
+
+  const items = remainingCourses.map((course) => ({ course, gradeIndex: 0 }));
+  const highGradeIndex = rule.highGrade === null
+    ? 0
+    : RECOMMENDATION_GRADES.findIndex((option) => option.grade === rule.highGrade);
+
+  if (rule.highGrade !== null) {
+    let allocatedHighGradeCredits = 0;
+    for (const item of strategy.highGradeOrder(items)) {
+      if (allocatedHighGradeCredits >= futureHighGradeCreditsNeeded) {
+        break;
+      }
+      item.gradeIndex = Math.max(item.gradeIndex, highGradeIndex);
+      allocatedHighGradeCredits += item.course.credits;
+    }
+  }
+
+  let planWeighted = weightedPointsForItems(items);
+  const upgradeOrder = strategy.upgradeOrder(items);
+  while (projectedWeighted + planWeighted < targetWeighted) {
+    let changed = false;
+    for (const item of upgradeOrder) {
+      if (item.gradeIndex >= RECOMMENDATION_GRADES.length - 1) {
+        continue;
+      }
+      const before = RECOMMENDATION_GRADES[item.gradeIndex].pointHundredths;
+      item.gradeIndex += 1;
+      const after = RECOMMENDATION_GRADES[item.gradeIndex].pointHundredths;
+      planWeighted += (after - before) * item.course.credits;
+      changed = true;
+      if (projectedWeighted + planWeighted >= targetWeighted) {
+        break;
+      }
+    }
+    if (!changed) {
+      return null;
+    }
+  }
+
+  for (const item of strategy.relaxOrder(items)) {
+    while (item.gradeIndex > 0) {
+      const currentOption = RECOMMENDATION_GRADES[item.gradeIndex];
+      const nextOption = RECOMMENDATION_GRADES[item.gradeIndex - 1];
+      const drop = (currentOption.pointHundredths - nextOption.pointHundredths) * item.course.credits;
+      if (projectedWeighted + planWeighted - drop < targetWeighted) {
+        break;
+      }
+
+      item.gradeIndex -= 1;
+      const highGradeCredits =
+        currentHighGradeCredits + highGradeCreditsInItems(items, rule.highGrade);
+      if (highGradeCredits < requiredHighGradeCredits) {
+        item.gradeIndex += 1;
+        break;
+      }
+      planWeighted -= drop;
+    }
+  }
+
+  const grades = gradesFromItems(items);
+  const evaluated = evaluatePlan(
+    {
+      id: strategy.id,
+      name: strategy.name,
+      description: strategy.description,
+      grades,
+      gpa: truncateGpa(projectedWeighted + planWeighted, totalCredits)
+    },
+    records,
+    remainingCourses,
+    options,
+    targetClass
+  );
+
+  return evaluated.targetClassEligible === true ? evaluated : null;
 };
 
-const buildFutureGradePlans = (
+const classStrategies = (targetClass: ClassName): PlanStrategy[] => {
+  const highGradeLabel = classRuleFor(targetClass).highGrade;
+  const thresholdText = highGradeLabel ? `${highGradeLabel} or better` : "the class minimum";
+  return [
+    {
+      id: "class-balanced",
+      name: "Balanced class plan",
+      description: `Meets the class rules with a balanced mix while keeping ${thresholdText} on higher-credit courses.`,
+      highGradeOrder: (items) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      upgradeOrder: (items) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      relaxOrder: (items) => [...items].sort(
+        (a, b) => a.course.credits - b.course.credits || courseOrderValue(b.course).localeCompare(courseOrderValue(a.course))
+      )
+    },
+    {
+      id: "class-low-credit",
+      name: "Low-credit high-grade plan",
+      description: `Places more ${thresholdText} results on lower-credit courses, then raises other grades only as needed for GPA.`,
+      highGradeOrder: (items) => [...items].sort(
+        (a, b) => a.course.credits - b.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      upgradeOrder: (items) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      relaxOrder: (items) => [...items].sort(
+        (a, b) => a.course.credits - b.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      )
+    },
+    {
+      id: "class-early",
+      name: "Early high-grade plan",
+      description: `Front-loads the ${thresholdText} credits into earlier remaining courses.`,
+      highGradeOrder: (items) => [...items].sort((a, b) => courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))),
+      upgradeOrder: (items) => [...items].sort((a, b) => courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))),
+      relaxOrder: (items) => [...items].sort((a, b) => courseOrderValue(b.course).localeCompare(courseOrderValue(a.course)))
+    },
+    {
+      id: "class-late",
+      name: "Late high-grade plan",
+      description: `Concentrates the ${thresholdText} credits in later remaining courses.`,
+      highGradeOrder: (items) => [...items].sort((a, b) => courseOrderValue(b.course).localeCompare(courseOrderValue(a.course))),
+      upgradeOrder: (items) => [...items].sort((a, b) => courseOrderValue(b.course).localeCompare(courseOrderValue(a.course))),
+      relaxOrder: (items) => [...items].sort((a, b) => courseOrderValue(a.course).localeCompare(courseOrderValue(b.course)))
+    },
+    {
+      id: "class-buffer",
+      name: "Class safety buffer",
+      description: "Adds a small GPA buffer above the minimum while still satisfying the class-grade distribution rules.",
+      bufferHundredths: 10,
+      highGradeOrder: (items) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      upgradeOrder: (items) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      ),
+      relaxOrder: (items) => [...items].sort(
+        (a, b) => a.course.credits - b.course.credits || courseOrderValue(b.course).localeCompare(courseOrderValue(a.course))
+      )
+    }
+  ];
+};
+
+const buildGpaOnlyPlans = (
   remainingCourses: Course[],
   projectedWeighted: number,
   projectedCredits: number,
   targetHundredths: number,
   records: Record<string, CourseRecord>,
-  options?: {
-    programme?: Programme;
-    selection?: CurriculumSelection;
-    registrationInfo?: RegistrationInfo;
-    classTarget?: ClassName;
-  }
-): {
-  recommendedGrades: Record<string, LetterGrade>;
-  recommendedGpa: string | null;
-  recommendationSummary: string;
-  possiblePlans: FutureGradePlan[];
-} => {
-  const remainingCredits = remainingCourses.reduce(
-    (sum, course) => sum + course.credits,
-    0
-  );
-  const totalCredits = projectedCredits + remainingCredits;
-  const targetWeighted = targetHundredths * totalCredits;
-
-  if (remainingCourses.length === 0 || remainingCredits === 0) {
-    return {
-      recommendedGrades: {},
-      recommendedGpa: truncateGpa(projectedWeighted, projectedCredits),
-      recommendationSummary: "No future GPA-bearing courses are available for a recommendation.",
-      possiblePlans: []
-    };
-  }
-
-  const maxWeighted =
-    projectedWeighted + remainingCredits * GRADE_POINTS_HUNDREDTHS.A;
-  const allAPlan = buildAllAPlan(remainingCourses, projectedWeighted, projectedCredits);
-  if (maxWeighted < targetWeighted) {
-    return {
-      recommendedGrades: allAPlan?.grades ?? {},
-      recommendedGpa: truncateGpa(maxWeighted, totalCredits),
-      recommendationSummary:
-        "Even A grades for every future GPA-bearing course cannot reach this target.",
-      possiblePlans: allAPlan ? [allAPlan] : []
-    };
-  }
-
-  const strategies: Array<{
-    id: string;
-    name: string;
-    description: string;
-    targetHundredths: number;
-    orderItems: (items: PlanItem[]) => PlanItem[];
-  }> = [
+  options?: PlannerOptions
+): FutureGradePlan[] => {
+  const strategies = [
     {
       id: "balanced",
-      name: "Balanced",
+      name: "Balanced GPA plan",
       description: "A minimum-mix plan that keeps higher grades on higher-credit courses.",
-      targetHundredths,
-      orderItems: (items) =>
-        [...items].sort(
-          (a, b) =>
-            a.course.credits - b.course.credits ||
-            courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
-        )
+      orderItems: (items: PlanItem[]) => [...items].sort(
+        (a, b) => a.course.credits - b.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      )
     },
     {
       id: "low-credit-push",
       name: "Low-credit push",
       description: "Higher grades are placed on smaller-credit courses where possible.",
-      targetHundredths,
-      orderItems: (items) =>
-        [...items].sort(
-          (a, b) =>
-            b.course.credits - a.course.credits ||
-            courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
-        )
+      orderItems: (items: PlanItem[]) => [...items].sort(
+        (a, b) => b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      )
     },
     {
       id: "early-push",
       name: "Early push",
       description: "Keeps stronger grades on earlier remaining subjects.",
-      targetHundredths,
-      orderItems: (items) =>
-        [...items].sort((a, b) =>
-          courseOrderValue(b.course).localeCompare(courseOrderValue(a.course))
-        )
+      orderItems: (items: PlanItem[]) => [...items].sort((a, b) => courseOrderValue(b.course).localeCompare(courseOrderValue(a.course)))
     },
     {
       id: "late-push",
       name: "Late push",
       description: "Keeps stronger grades on later remaining subjects.",
-      targetHundredths,
-      orderItems: (items) =>
-        [...items].sort((a, b) =>
-          courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
-        )
+      orderItems: (items: PlanItem[]) => [...items].sort((a, b) => courseOrderValue(a.course).localeCompare(courseOrderValue(b.course)))
     },
     {
       id: "buffer",
-      name: "Buffer",
-      description: "A safer plan that aims a little above the target GPA.",
-      targetHundredths:
-        (targetHundredths + 10) * totalCredits <= maxWeighted
-          ? targetHundredths + 10
-          : targetHundredths,
-      orderItems: (items) =>
-        [...items].sort(
-          (a, b) =>
-            a.course.semester - b.course.semester ||
-            b.course.credits - a.course.credits ||
-            courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
-        )
+      name: "GPA safety buffer",
+      description: "A safer plan that aims 0.10 above the requested GPA when possible.",
+      targetHundredths: targetHundredths + 10,
+      orderItems: (items: PlanItem[]) => [...items].sort(
+        (a, b) => a.course.semester - b.course.semester || b.course.credits - a.course.credits || courseOrderValue(a.course).localeCompare(courseOrderValue(b.course))
+      )
     }
   ];
 
   const possiblePlans: FutureGradePlan[] = [];
   const seen = new Set<string>();
   for (const strategy of strategies) {
-    const plan = buildGreedyPlan(
+    const plan = buildGpaGreedyPlan(
       strategy.id,
       strategy.name,
       strategy.description,
       remainingCourses,
       projectedWeighted,
       projectedCredits,
-      strategy.targetHundredths,
-      strategy.orderItems
+      Math.min(400, strategy.targetHundredths ?? targetHundredths),
+      strategy.orderItems,
+      records,
+      options
     );
     if (!plan) {
       continue;
@@ -335,101 +599,27 @@ const buildFutureGradePlans = (
     }
   }
 
-  for (const option of RECOMMENDATION_GRADES) {
-    if (possiblePlans.length >= 5) {
-      break;
-    }
-    const uniformWeighted =
-      projectedWeighted + option.pointHundredths * remainingCredits;
-    if (uniformWeighted < targetWeighted) {
-      continue;
-    }
-    const plan = toPlan(
-      `uniform-${option.grade}`,
-      `All ${option.grade}`,
-      `A simple plan using ${option.grade} in every future GPA-bearing course.`,
-      remainingCourses.map((course) => ({
-        course,
-        gradeIndex: RECOMMENDATION_GRADES.findIndex((grade) => grade.grade === option.grade)
-      })),
-      projectedWeighted,
-      totalCredits
-    );
-    const key = planKey(remainingCourses, plan);
-    if (!seen.has(key)) {
-      seen.add(key);
-      possiblePlans.push(plan);
-    }
-  }
-
+  const allAPlan = buildAllAPlan(
+    remainingCourses,
+    projectedWeighted,
+    projectedCredits,
+    records,
+    options
+  );
   if (possiblePlans.length < 5 && allAPlan) {
     const key = planKey(remainingCourses, allAPlan);
     if (!seen.has(key)) {
       possiblePlans.push(allAPlan);
     }
   }
-
-  // If a class target has been provided, filter the candidate plans by simulating
-  // applying the plan grades to the remaining courses and evaluating the
-  // classification rules. This ensures the recommended plans achieve the
-  // selected class (e.g. First Class) rather than only reaching a GPA threshold.
-  let filteredPlans = possiblePlans;
-  if (options?.classTarget && options?.programme) {
-    filteredPlans = possiblePlans.filter((plan) => {
-      const simulatedRecords: Record<string, CourseRecord> = { ...records };
-      for (const course of remainingCourses) {
-        simulatedRecords[course.id] = {
-          courseId: course.id,
-          result: plan.grades[course.id],
-          attempts: []
-        };
-      }
-      const evaluation = evaluateClassification(
-        options.programme!,
-        options.selection,
-        simulatedRecords,
-        options.registrationInfo ?? {}
-      );
-      const rule = evaluation.results.find((r) => r.className === options.classTarget);
-      return rule?.eligible === true;
-    });
-
-    // If filtering makes no plans available, keep the original suggestions but
-    // surface an explanatory summary later.
-    if (filteredPlans.length === 0) {
-      filteredPlans = possiblePlans;
-    }
-  }
-
-  const primaryPlan = filteredPlans[0];
-  const recommendedGrades = primaryPlan?.grades ?? {};
-  const recommendedGpa = primaryPlan?.gpa ?? null;
-  const distinctGrades = [...new Set(Object.values(recommendedGrades))];
-  const summary =
-    filteredPlans.length > 1
-      ? `${filteredPlans.length} possible future grade plans can reach the target.`
-      : distinctGrades.length === 1
-      ? `Aim for ${distinctGrades[0]} or better in each future GPA-bearing course.`
-      : `Aim for the suggested mix of ${distinctGrades.join(", ")} grades across future GPA-bearing courses.`;
-
-  return {
-    recommendedGrades,
-    recommendedGpa,
-    recommendationSummary: `${summary} Selected plan GPA: ${recommendedGpa ?? "--"}.`,
-    possiblePlans: filteredPlans.slice(0, 5)
-  };
+  return possiblePlans.slice(0, 5);
 };
 
 export const calculatePlannerProjection = (
   courses: Course[],
   records: Record<string, CourseRecord>,
   scenario: PlannerScenario,
-  options?: {
-    programme?: Programme;
-    selection?: CurriculumSelection;
-    registrationInfo?: RegistrationInfo;
-    classTarget?: ClassName;
-  }
+  options?: PlannerOptions
 ): PlannerProjection => {
   const currentResults = effectiveResultMap(courses, records);
   const currentGpa = calculateCourseGpa(courses, currentResults);
@@ -445,10 +635,7 @@ export const calculatePlannerProjection = (
   for (const course of courses) {
     const currentResult = currentResults[course.id] ?? "";
     const currentPoint = resultPointHundredths(currentResult);
-    if (currentPoint !== null) {
-      continue;
-    }
-    if (currentResult === "P") {
+    if (currentPoint !== null || currentResult === "P") {
       continue;
     }
     remainingCourseIds.push(course.id);
@@ -456,49 +643,165 @@ export const calculatePlannerProjection = (
     remainingGpaCredits += course.credits;
   }
 
-  const targetHundredths = targetToHundredths(scenario.targetGpa);
-  const requiredWeightedForTarget =
-    targetHundredths * (projectedCredits + remainingGpaCredits);
-  const requiredAverageOnRemaining =
-    remainingGpaCredits === 0
-      ? null
-      : (requiredWeightedForTarget - projectedWeighted) / remainingGpaCredits / 100;
-  const minPossibleGpa = truncateGpa(projectedWeighted, projectedCredits + remainingGpaCredits);
+  const targetClass = options?.classTarget ?? scenario.classTarget ?? null;
+  const classMinimumGpa = targetClass ? classRuleFor(targetClass).gpa : 0;
+  const effectiveTargetGpa = Math.max(scenario.targetGpa, classMinimumGpa);
+  const targetHundredths = targetToHundredths(effectiveTargetGpa);
+  const totalFinalCredits = projectedCredits + remainingGpaCredits;
+  const requiredWeightedForTarget = targetHundredths * totalFinalCredits;
+  const requiredAverageOnRemaining = remainingGpaCredits === 0
+    ? null
+    : (requiredWeightedForTarget - projectedWeighted) / remainingGpaCredits / 100;
+  const minPossibleGpa = truncateGpa(projectedWeighted, totalFinalCredits);
   const maxPossibleGpa = truncateGpa(
     projectedWeighted + remainingGpaCredits * GRADE_POINTS_HUNDREDTHS.A,
-    projectedCredits + remainingGpaCredits
+    totalFinalCredits
   );
   const projectedGpa = truncateGpa(projectedWeighted, projectedCredits);
   const maxValue = maxPossibleGpa === null ? null : Number(maxPossibleGpa);
-  const impossible =
-    remainingGpaCredits === 0
-      ? projectedGpa === null || Number(projectedGpa) < scenario.targetGpa
-      : requiredAverageOnRemaining !== null && requiredAverageOnRemaining > 4;
+  const gpaImpossible = remainingGpaCredits === 0
+    ? projectedGpa === null || Number(projectedGpa) < effectiveTargetGpa
+    : requiredAverageOnRemaining !== null && requiredAverageOnRemaining > 4;
 
   let requiredAverageLabel = "No remaining GPA-bearing credits.";
   if (requiredAverageOnRemaining !== null) {
     if (requiredAverageOnRemaining <= 0) {
-      requiredAverageLabel = "Target is already protected by current grades.";
-    } else if (requiredAverageOnRemaining > 4 || (maxValue !== null && maxValue < scenario.targetGpa)) {
-      requiredAverageLabel = "Target is impossible with A grades in every remaining GPA-bearing course.";
+      requiredAverageLabel = "The GPA requirement is already protected by current grades.";
+    } else if (
+      requiredAverageOnRemaining > 4 ||
+      (maxValue !== null && maxValue < effectiveTargetGpa)
+    ) {
+      requiredAverageLabel = "The GPA requirement is impossible even with A grades in every remaining GPA-bearing course.";
     } else {
-      requiredAverageLabel = `${requiredAverageOnRemaining.toFixed(2)} average, roughly ${gradeForAverage(requiredAverageOnRemaining)} or better.`;
+      requiredAverageLabel = `${requiredAverageOnRemaining.toFixed(2)} average, roughly ${gradeForAverage(requiredAverageOnRemaining)} or better for the GPA requirement.`;
     }
   }
-  const recommendation = buildFutureGradePlans(
+
+  const currentClassification = options?.programme
+    ? evaluateClassification(
+        options.programme,
+        options.selection,
+        records,
+        options.registrationInfo ?? {}
+      )
+    : null;
+  const allAPlan = buildAllAPlan(
     remainingCourses,
     projectedWeighted,
     projectedCredits,
-    targetHundredths,
     records,
-    options
+    options,
+    targetClass
   );
+  const bestPossibleClass = allAPlan?.projectedClass ?? currentClassification?.awardedClass ?? null;
+
+  let possiblePlans: FutureGradePlan[] = [];
+  let classTargetPossible: boolean | null = null;
+  let classTargetReasons: string[] = [];
+  let highGradeThreshold: LetterGrade | null = null;
+  let currentHighGradeCredits = 0;
+  let requiredHighGradeCredits = 0;
+  let additionalHighGradeCreditsNeeded = 0;
+
+  if (targetClass && options?.programme) {
+    const rule = classRuleFor(targetClass);
+    highGradeThreshold = rule.highGrade;
+    requiredHighGradeCredits = requiredHighGradeCreditsFor(totalFinalCredits, targetClass);
+    currentHighGradeCredits = currentHighGradeCreditsFor(
+      courses,
+      currentResults,
+      rule.highGrade
+    );
+    additionalHighGradeCreditsNeeded = Math.max(
+      0,
+      requiredHighGradeCredits - currentHighGradeCredits
+    );
+
+    const seen = new Set<string>();
+    for (const strategy of classStrategies(targetClass)) {
+      const plan = buildClassPlan(
+        strategy,
+        courses,
+        currentResults,
+        remainingCourses,
+        projectedWeighted,
+        projectedCredits,
+        targetHundredths,
+        targetClass,
+        records,
+        options
+      );
+      if (!plan) {
+        continue;
+      }
+      const key = planKey(remainingCourses, plan);
+      if (!seen.has(key)) {
+        seen.add(key);
+        possiblePlans.push(plan);
+      }
+    }
+
+    classTargetPossible = possiblePlans.length > 0;
+    if (!classTargetPossible) {
+      if (gpaImpossible) {
+        classTargetReasons.push(
+          `A final GPA of at least ${effectiveTargetGpa.toFixed(2)} cannot be reached with the remaining credits.`
+        );
+      }
+      if (allAPlan && allAPlan.targetClassEligible === false) {
+        const allARecords = simulateRecords(records, remainingCourses, allAPlan.grades);
+        const evaluation = evaluateClassification(
+          options.programme,
+          options.selection,
+          allARecords,
+          options.registrationInfo ?? {}
+        );
+        const targetEvaluation = evaluation.results.find(
+          (result) => result.className === targetClass
+        );
+        classTargetReasons.push(...(targetEvaluation?.reasons ?? []));
+      }
+      classTargetReasons = [...new Set(classTargetReasons)];
+    }
+  } else {
+    possiblePlans = buildGpaOnlyPlans(
+      remainingCourses,
+      projectedWeighted,
+      projectedCredits,
+      targetHundredths,
+      records,
+      options
+    );
+  }
+
+  const primaryPlan = possiblePlans[0] ?? null;
+  const recommendedGrades = primaryPlan?.grades ?? (
+    targetClass && !classTargetPossible ? allAPlan?.grades ?? {} : {}
+  );
+  const recommendedGpa = primaryPlan?.gpa ?? (
+    targetClass && !classTargetPossible ? allAPlan?.gpa ?? null : null
+  );
+
+  let recommendationSummary: string;
+  if (targetClass) {
+    if (classTargetPossible) {
+      recommendationSummary = `${possiblePlans.length} class-valid future grade plan${possiblePlans.length === 1 ? "" : "s"} can achieve ${targetClass} with a final GPA of at least ${effectiveTargetGpa.toFixed(2)}.`;
+    } else {
+      recommendationSummary = `No future-grade plan can currently satisfy every ${targetClass} requirement. The best-case grades are shown for comparison.`;
+    }
+  } else if (possiblePlans.length > 0) {
+    recommendationSummary = `${possiblePlans.length} GPA-focused future grade plan${possiblePlans.length === 1 ? "" : "s"} can reach ${effectiveTargetGpa.toFixed(2)}.`;
+  } else {
+    recommendationSummary = "No future GPA-bearing courses are available for a recommendation.";
+  }
+
+  const impossible = gpaImpossible || (targetClass !== null && classTargetPossible === false);
 
   return {
     currentGpa,
     projectedGpa,
-    recommendedGpa: recommendation.recommendedGpa,
-    targetGpa: scenario.targetGpa,
+    recommendedGpa,
+    targetGpa: effectiveTargetGpa,
     gradedCredits: currentCredits,
     projectedCredits,
     remainingGpaCredits,
@@ -508,9 +811,18 @@ export const calculatePlannerProjection = (
     requiredAverageLabel,
     impossible,
     remainingCourseIds,
-    recommendedGrades: recommendation.recommendedGrades,
-    recommendationSummary: recommendation.recommendationSummary,
-    possiblePlans: recommendation.possiblePlans
+    recommendedGrades,
+    recommendationSummary,
+    possiblePlans: possiblePlans.slice(0, 5),
+    currentClass: currentClassification?.awardedClass ?? null,
+    targetClass,
+    bestPossibleClass,
+    classTargetPossible,
+    classTargetReasons,
+    highGradeThreshold,
+    currentHighGradeCredits,
+    requiredHighGradeCredits,
+    additionalHighGradeCreditsNeeded
   };
 };
 
@@ -519,5 +831,6 @@ export const defaultScenario = (targetGpa = 3.3): PlannerScenario => ({
   name: "Primary target",
   targetGpa,
   projectedGrades: {},
-  updatedAt: new Date().toISOString()
+  updatedAt: new Date().toISOString(),
+  classTarget: classTargetForDefaultGpa(targetGpa)
 });
