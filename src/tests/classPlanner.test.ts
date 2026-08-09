@@ -152,4 +152,23 @@ describe("final degree-class planning", () => {
     );
     expect(parsed.classTarget).toBe("Second Class (Upper Division)");
   });
+
+  it("keeps an explicit GPA-only target separate even when it equals a class threshold", () => {
+    const gpaOnlyScenario: PlannerScenario = {
+      ...scenario("First Class", 3.7),
+      name: "GPA only",
+      classTarget: null
+    };
+    const parsed = plannerScenarioSchema.parse(gpaOnlyScenario);
+    const projection = calculatePlannerProjection(
+      courses,
+      partialRecords(5, "A-"),
+      parsed,
+      { programme, selection, registrationInfo }
+    );
+
+    expect(parsed.classTarget).toBeNull();
+    expect(projection.targetClass).toBeNull();
+    expect(projection.classTargetPossible).toBeNull();
+  });
 });
