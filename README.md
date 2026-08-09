@@ -257,7 +257,7 @@ See [PRIVACY.md](./PRIVACY.md) for the repository's privacy documentation.
 
 ### Requirements
 
-- Node.js 18+
+- Node.js **20.19+** or **22.12+**
 - npm
 
 ### Install
