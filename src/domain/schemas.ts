@@ -146,7 +146,7 @@ export const plannerScenarioSchema = z.object({
   targetGpa: z.number().min(0).max(4),
   projectedGrades: z.record(z.string(), gradeEntrySchema),
   updatedAt: z.string().min(1),
-  classTarget: classNameSchema.optional()
+  classTarget: classNameSchema.nullable().optional()
 });
 
 export const studentDataSchema = z.object({
