@@ -10,7 +10,6 @@ import type {
 
 import { isLetterGrade } from "../data/gradeScale";
 import { getPrescribedProgrammeCredits, getSelectedCourses } from "./curriculum";
-import { elapsedAcademicYears } from "./graduation";
 import {
   calculateCourseGpa,
   gradeMeets,
@@ -139,6 +138,10 @@ export const evaluateClassTarget = (
   registrationInfo: RegistrationInfo,
   className: ClassName
 ): ClassTargetEvaluation => {
+  // Academic-year input is intentionally not used. For planning purposes this
+  // app assumes the student completes the degree within four academic years.
+  void registrationInfo;
+
   const rule = DEGREE_CLASS_RULES[className];
   const courses = getSelectedCourses(programme, selection);
   const results = effectiveResultMap(courses, records);
@@ -174,15 +177,8 @@ export const evaluateClassTarget = (
         .reduce((sum, course) => sum + course.credits, 0)
     : 0;
 
-  const durationYears = elapsedAcademicYears(
-    registrationInfo.firstAcademicYear,
-    registrationInfo.currentOrCompletionAcademicYear
-  );
-  const withinFourYearsOrValidReason = !rule.requiresFourYearCompletion
-    ? true
-    : durationYears === null
-      ? null
-      : durationYears <= 4 || registrationInfo.approvedExtensionOrValidReason === true;
+  const durationYears = 4;
+  const withinFourYearsOrValidReason = true;
 
   const requirements: ClassRequirementResult[] = [];
 
@@ -252,18 +248,8 @@ export const evaluateClassTarget = (
       requirement(
         "duration",
         "Four-year completion rule",
-        withinFourYearsOrValidReason === null
-          ? "unknown"
-          : withinFourYearsOrValidReason
-            ? "met"
-            : "not-met",
-        withinFourYearsOrValidReason === null
-          ? "Enter the first and current/completion academic years to verify the four-year class rule."
-          : withinFourYearsOrValidReason
-            ? durationYears !== null && durationYears <= 4
-              ? `Completion is within ${durationYears} academic year${durationYears === 1 ? "" : "s"}.`
-              : "An approved extension or valid reason is recorded for the completion period."
-            : `The entered completion period is ${durationYears} academic years with no approved valid reason recorded.`
+        "met",
+        "Assumed met for planning: this app assumes the degree is completed within four academic years."
       )
     );
   }

@@ -41,26 +41,6 @@ export interface GraduationEvaluation {
   disclaimer: string;
 }
 
-export const parseAcademicYearStart = (value?: string): number | null => {
-  if (!value) {
-    return null;
-  }
-  const match = value.match(/\b(19|20)\d{2}\b/);
-  return match ? Number(match[0]) : null;
-};
-
-export const elapsedAcademicYears = (
-  firstAcademicYear?: string,
-  completionAcademicYear?: string
-): number | null => {
-  const start = parseAcademicYearStart(firstAcademicYear);
-  const end = parseAcademicYearStart(completionAcademicYear);
-  if (start === null || end === null || end < start) {
-    return null;
-  }
-  return end - start + 1;
-};
-
 const expectedCreditTarget = (
   programme: Programme,
   selection?: CurriculumSelection
@@ -108,12 +88,10 @@ export const evaluateGraduation = (
     .filter((course) => isCompletedResult(effectiveResults[course.id] ?? ""))
     .reduce((sum, course) => sum + course.credits, 0);
 
-  const elapsed = elapsedAcademicYears(
-    registrationInfo.firstAcademicYear,
-    registrationInfo.currentOrCompletionAcademicYear
-  );
-  const sevenYearStatus =
-    elapsed === null ? "unknown" : elapsed <= 7 ? "met" : "not-met";
+  // Planning assumption: students complete the degree within four academic years.
+  // This also means the seven-year maximum is automatically satisfied here.
+  const elapsed = 4;
+  const sevenYearStatus: GraduationEvaluation["sevenYearStatus"] = "met";
   const overallValue = overallGpa.gpa === null ? null : Number(overallGpa.gpa);
   const allYearsPassed = yearProgress.every((year) => year.status === "Passed");
   const creditsMet = creditRequirementMet(expectedCredits, completedCredits);
@@ -151,11 +129,8 @@ export const evaluateGraduation = (
     {
       id: "seven-years",
       label: "Seven-year maximum",
-      status: sevenYearStatus === "unknown" ? "unknown" : sevenYearStatus === "met" ? "met" : "not-met",
-      detail:
-        elapsed === null
-          ? "Enter first and completion academic years to evaluate."
-          : `${elapsed} academic year(s) from first registration to completion`
+      status: "met",
+      detail: "Assumed met: this app assumes degree completion within four academic years, which is within the seven-year maximum."
     },
     {
       id: "last-attempt",
@@ -183,9 +158,8 @@ export const evaluateGraduation = (
       creditsMet &&
       allYearsPassed &&
       (overallValue ?? 0) >= 2 &&
-      unresolvedCourseIds.length === 0 &&
-      sevenYearStatus !== "not-met",
+      unresolvedCourseIds.length === 0,
     disclaimer:
-      "This is an unofficial planning result; final graduation determination belongs to the University."
+      "Planning assumes degree completion within four academic years. This is an unofficial result; final graduation determination belongs to the University."
   };
 };

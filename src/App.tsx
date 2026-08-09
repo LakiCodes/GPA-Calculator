@@ -93,16 +93,6 @@ const attemptTypes: Array<{ value: AttemptType; label: string }> = [
 ];
 
 const resultOptions = RESULT_CODES as readonly GradeEntry[];
-const ACADEMIC_YEAR_OPTIONS = [
-  "2022/2023",
-  "2023/2024",
-  "2024/2025",
-  "2025/2026",
-  "2026/2027",
-  "2027/2028",
-  "2028/2029",
-  "2029/2030"
-] as const;
 
 const selectCoursesForGroup = (group: ElectiveGroup, pathwayId?: string): string[] => {
   const available = group.availableCourses.filter((course) =>
@@ -165,6 +155,7 @@ const formatGpa = (value: string | null): string => value ?? "--";
 
 const csvEscape = (value: string | number | null | undefined): string => {
   const text = String(value ?? "");
+  // Neutralize spreadsheet formula prefixes so exported cells are never executed.
   const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
@@ -775,16 +766,9 @@ function App() {
           <ProgrammeControls
             programme={programme}
             activeSelection={activeSelection}
-            registrationInfo={data.registrationInfo}
             onProgrammeChange={changeProgramme}
             onPathwayChange={changePathway}
             onToggleElective={toggleElective}
-            onRegistrationInfoChange={(updater) =>
-              updateData((previous) => ({
-                ...previous,
-                registrationInfo: updater(previous.registrationInfo)
-              }))
-            }
             issues={selectionIssues}
           />
         </aside>
@@ -913,23 +897,17 @@ function App() {
 const ProgrammeControls = ({
   programme,
   activeSelection,
-  registrationInfo,
   issues,
   onProgrammeChange,
   onPathwayChange,
-  onToggleElective,
-  onRegistrationInfoChange
+  onToggleElective
 }: {
   programme: (typeof programmes)[number];
   activeSelection: CurriculumSelection;
-  registrationInfo: StudentData["registrationInfo"];
   issues: ReturnType<typeof getSelectionIssues>;
   onProgrammeChange: (programmeId: string) => void;
   onPathwayChange: (pathwayId: string) => void;
   onToggleElective: (group: ElectiveGroup, course: Course, checked: boolean) => void;
-  onRegistrationInfoChange: (
-    updater: (registrationInfo: StudentData["registrationInfo"]) => StudentData["registrationInfo"]
-  ) => void;
 }) => {
   const groups = getApplicableElectiveGroups(programme, activeSelection);
 
@@ -951,75 +929,6 @@ const ProgrammeControls = ({
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="panel">
-        <div className="panel-heading">
-          <span>Academic years</span>
-          <span className="small">Class rule</span>
-        </div>
-        <div className="form-grid">
-          <label>
-            <span className="field-label">Start year</span>
-            <select
-              className="control"
-              aria-label="First academic year"
-              value={registrationInfo.firstAcademicYear ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                onRegistrationInfoChange((current) => ({
-                  ...current,
-                  firstAcademicYear: value || undefined
-                }));
-              }}
-            >
-              <option value="">Select year</option>
-              {ACADEMIC_YEAR_OPTIONS.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="field-label">End / current year</span>
-            <select
-              className="control"
-              aria-label="Current or completion academic year"
-              value={registrationInfo.currentOrCompletionAcademicYear ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                onRegistrationInfoChange((current) => ({
-                  ...current,
-                  currentOrCompletionAcademicYear: value || undefined
-                }));
-              }}
-            >
-              <option value="">Select year</option>
-              {ACADEMIC_YEAR_OPTIONS.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <label className="inline-check">
-          <input
-            type="checkbox"
-            checked={registrationInfo.approvedExtensionOrValidReason === true}
-            onChange={(event) =>
-              onRegistrationInfoChange((current) => ({
-                ...current,
-                approvedExtensionOrValidReason: event.target.checked
-              }))
-            }
-          />
-          Approved extension or valid reason
-        </label>
-        <p className="fine-print">
-          Used to verify the four-year degree-class rule. Choose academic years from 2022/2023 to 2029/2030.
-        </p>
       </div>
 
       {programme.pathways.length > 0 && (

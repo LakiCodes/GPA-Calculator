@@ -14,7 +14,6 @@ import {
   resultPointHundredths
 } from "./gpa";
 import { getSelectedCourses } from "./curriculum";
-import { elapsedAcademicYears } from "./graduation";
 import { effectiveResultMap } from "./records";
 import { isLetterGrade } from "../data/gradeScale";
 
@@ -90,14 +89,12 @@ export const evaluateClassification = (
   const currentGpaValue = currentGpa.gpa === null ? null : Number(currentGpa.gpa);
   const evaluatedCredits = currentGpa.gradedCredits;
   const requiredHighGradeCredits = halfCredits(evaluatedCredits);
-  const duration = elapsedAcademicYears(
-    registrationInfo.firstAcademicYear,
-    registrationInfo.currentOrCompletionAcademicYear
-  );
-  const withinFourYearsOrValidReason =
-    duration === null
-      ? null
-      : duration <= 4 || registrationInfo.approvedExtensionOrValidReason === true;
+
+  // Class standing is evaluated under the app-wide planning assumption that the
+  // degree is completed within four academic years. Stored academic-year values
+  // are intentionally ignored.
+  const duration = 4;
+  const withinFourYearsOrValidReason = true;
 
   const gpaBearingCourses = courses.filter(
     (course) => resultPointHundredths(results[course.id] ?? "") !== null

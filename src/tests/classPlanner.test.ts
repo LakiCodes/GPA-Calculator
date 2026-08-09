@@ -45,10 +45,7 @@ const partialRecords = (
     ])
   );
 
-const registrationInfo = {
-  firstAcademicYear: "2026/2027",
-  currentOrCompletionAcademicYear: "2029/2030"
-};
+const registrationInfo = {};
 
 describe("final degree-class planning", () => {
   it("uses half of total prescribed programme credits for the high-grade threshold", () => {
@@ -125,25 +122,20 @@ describe("final degree-class planning", () => {
     expect(projection.classTargetEvaluation?.blockers.join(" ")).toContain("below C");
   });
 
-  it("surfaces the four-year rule as a non-grade blocker", () => {
-    const projection = calculatePlannerProjection(
-      courses,
+  it("treats the four-year rule as an explicit planning assumption", () => {
+    const evaluation = evaluateClassTarget(
+      programme,
+      selection,
       partialRecords(5, "A"),
-      scenario("First Class", 3.7),
-      {
-        programme,
-        selection,
-        registrationInfo: {
-          firstAcademicYear: "2026/2027",
-          currentOrCompletionAcademicYear: "2030/2031"
-        },
-        classTarget: "First Class"
-      }
+      {},
+      "First Class"
     );
+    const durationRequirement = evaluation.requirements.find((item) => item.id === "duration");
 
-    expect(projection.classTargetPossible).toBe(false);
-    expect(projection.classTargetEvaluation?.withinFourYearsOrValidReason).toBe(false);
-    expect(projection.recommendationSummary).toContain("not currently achievable");
+    expect(evaluation.withinFourYearsOrValidReason).toBe(true);
+    expect(evaluation.durationYears).toBe(4);
+    expect(durationRequirement?.status).toBe("met");
+    expect(durationRequirement?.detail).toContain("assumes the degree is completed within four academic years");
   });
 
   it("preserves a saved class target through runtime validation", () => {
