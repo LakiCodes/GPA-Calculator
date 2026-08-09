@@ -41,26 +41,6 @@ export interface GraduationEvaluation {
   disclaimer: string;
 }
 
-export const parseAcademicYearStart = (value?: string): number | null => {
-  if (!value) {
-    return null;
-  }
-  const match = value.match(/\b(19|20)\d{2}\b/);
-  return match ? Number(match[0]) : null;
-};
-
-export const elapsedAcademicYears = (
-  firstAcademicYear?: string,
-  completionAcademicYear?: string
-): number | null => {
-  const start = parseAcademicYearStart(firstAcademicYear);
-  const end = parseAcademicYearStart(completionAcademicYear);
-  if (start === null || end === null || end < start) {
-    return null;
-  }
-  return end - start + 1;
-};
-
 const expectedCreditTarget = (
   programme: Programme,
   selection?: CurriculumSelection
