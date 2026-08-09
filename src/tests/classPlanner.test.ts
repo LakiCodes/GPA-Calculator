@@ -127,10 +127,7 @@ describe("final degree-class planning", () => {
       programme,
       selection,
       partialRecords(5, "A"),
-      {
-        firstAcademicYear: "2022/2023",
-        currentOrCompletionAcademicYear: "2029/2030"
-      },
+      {},
       "First Class"
     );
     const durationRequirement = evaluation.requirements.find((item) => item.id === "duration");
