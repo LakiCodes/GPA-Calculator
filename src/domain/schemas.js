@@ -15,6 +15,12 @@ export const letterGradeSchema = z.enum([
     "D",
     "E"
 ]);
+export const classNameSchema = z.enum([
+    "First Class",
+    "Second Class (Upper Division)",
+    "Second Class (Lower Division)",
+    "Pass"
+]);
 export const specialResultCodeSchema = z.enum([
     "AB",
     "MC",
@@ -122,7 +128,8 @@ export const plannerScenarioSchema = z.object({
     name: z.string().min(1),
     targetGpa: z.number().min(0).max(4),
     projectedGrades: z.record(z.string(), gradeEntrySchema),
-    updatedAt: z.string().min(1)
+    updatedAt: z.string().min(1),
+    classTarget: classNameSchema.nullable().optional()
 });
 export const studentDataSchema = z.object({
     prospectusVersion: prospectusVersionSchema,
@@ -132,9 +139,6 @@ export const studentDataSchema = z.object({
     orphanedRecords: z.record(z.string(), courseRecordSchema),
     plannerScenarios: z.array(plannerScenarioSchema),
     registrationInfo: z.object({
-        firstAcademicYear: z.string().optional(),
-        currentOrCompletionAcademicYear: z.string().optional(),
-        approvedExtensionOrValidReason: z.boolean().optional(),
         lastAttemptProvision: z.boolean().optional()
     }),
     preferences: z.object({
